@@ -9,15 +9,16 @@
 **Etapas:**
 
 0. **Dois dispositivos identicos** se aproximam, no caso ambos tem rede wifi **Dispositivo A** e **Dispositivo B**.
-1. Preciso de um **sinal** para saber que ativara o wifi para comunicacao 
+1. Preciso de um **sinal** para saber que ativara o wifi para comunicacao e iniciara o **canal de comnunicacao**
 2. Supondo que o **Dispositivo A** tenha ativado o wifi logo ativara o canal de comunicacao 
 3. **Dispositivo B** acessa o wifi do **Dispositivo A**  
 4. Ambos dispositivos **acessam o canal de comnunicacao**  
 5. **Dispositivo A** posta a mensagem no canal informando que tem dados a serem transferidos  
 5. **Dispositivo B** posta a mensagem no canal **informando que ira receber** os dados a serem transferidos e **informa o ip para transferencia**
+6. **Iniciara a transferencia entre dispositivos**
 
 - **Situacao-Problema:**
-    - qual sera o sinal de ativavao marcado na etapa 1
+    - qual sera o sinal de ativavao marcado na etapa 1 ?
 
 ## 📌 Introdução
 O ChainTransfer é um sistema descentralizado de transferência de dados projetado para operar em redes Wi-Fi locais sem a necessidade de conexão com a internet. Este projeto tem como objetivo principal permitir que dispositivos compartilhem informações de forma eficiente e segura, mesmo em ambientes isolados onde a conectividade com a internet é limitada ou inexistente. Ele resolve o problema da comunicação offline em cenários distribuídos, possibilitando a troca de dados entre dispositivos que não se conhecem previamente, atuando como uma solução robusta e adaptável para diversas aplicações.
