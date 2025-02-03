@@ -5,19 +5,35 @@
 
 ## 📝 Modelagem de processo para iniciar a transferencia
 ![img](/image/modelagemB.png)
+**Hipótese 1:** 
+**Etapas:**
+
+0. **Dois dispositivos identicos** se aproximam, no caso ambos tem rede wifi **Dispositivo A** e **Dispositivo B**.
+1. Preciso de um **sinal** para saber que ativara o wifi para comunicacao 
+2. Supondo que o **Dispositivo A** tenha ativado o wifi logo ativara o canal de comunicacao 
+3. **Dispositivo B** acessa o wifi do **Dispositivo A**  
+4. Ambos dispositivos **acessam o canal de comnunicacao**  
+5. **Dispositivo A** posta a mensagem no canal informando que tem dados a serem transferidos  
+5. **Dispositivo B** posta a mensagem no canal **informando que ira receber** os dados a serem transferidos e **informa o ip para transferencia**
+
+- **Situacao-Problema:**
+    - qual sera o sinal de ativavao marcado na etapa 1
+
 ## 📌 Introdução
 O ChainTransfer é um sistema descentralizado de transferência de dados projetado para operar em redes Wi-Fi locais sem a necessidade de conexão com a internet. Este projeto tem como objetivo principal permitir que dispositivos compartilhem informações de forma eficiente e segura, mesmo em ambientes isolados onde a conectividade com a internet é limitada ou inexistente. Ele resolve o problema da comunicação offline em cenários distribuídos, possibilitando a troca de dados entre dispositivos que não se conhecem previamente, atuando como uma solução robusta e adaptável para diversas aplicações.
 
 ## ⚡ Recursos e Funcionalidades
 O ChainTransfer oferece as seguintes funcionalidades principais:
 
-*   **Detecção Automática de Dispositivos:** Os dispositivos na rede local são automaticamente detectados, eliminando a necessidade de configuração manual.
+*   **Detecção Automática de Dispositivos:** EM ANALISE - Precisa de algum recurso que dispare o sinal para iniciar o canal MQTT - Os dispositivos na rede local são automaticamente detectados, eliminando a necessidade de configuração manual.
 *   **Transferência de Dados Offline:** O sistema opera completamente sem a necessidade de conexão com a internet, tornando-o ideal para ambientes isolados.
 *   **Encaminhamento Dinâmico:** Os dados são encaminhados de um dispositivo para outro até chegar ao destino, seguindo um modelo de comunicação em cadeia.
 *   **Sistema Descentralizado:** Cada dispositivo atua como um nó independente, enviando, armazenando e retransmitindo informações, sem depender de um servidor central.
 *   **Resiliência e Adaptabilidade:** O sistema é projetado para ser resiliente e adaptável a diferentes cenários, permitindo a transmissão de logs, dados fragmentados e sincronização de informações em ambientes distribuídos.
 
 **Exemplo Prático:** Imagine uma rede local onde um dispositivo (A) precisa enviar um arquivo para outro dispositivo (C), mas eles não estão diretamente conectados. Com o ChainTransfer, o dispositivo A envia o arquivo para um dispositivo intermediário (B) que, por sua vez, encaminha o arquivo para C, sem a necessidade de qualquer configuração prévia ou conexão com a internet.
+
+**Exemplo de aplicacoes similares:** AirDroid Personal
 
 ## ✅ Tecnologias Utilizadas
 *   ✅ **Python:** A linguagem de programação principal para o desenvolvimento do sistema, escolhida por sua versatilidade e facilidade de uso, facilitando a implementação da lógica de comunicação e manipulação de dados.
