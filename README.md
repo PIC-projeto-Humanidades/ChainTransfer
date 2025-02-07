@@ -8,7 +8,7 @@
 
 # 📌  **Backlog do Projeto**
 
-![img]()
+![img](/image/walpaper.png)
 
 ## **Visão Geral**
 O projeto consiste no desenvolvimento de um dispositivo autônomo baseado em Linux para realizar a transferência automática de dados entre dispositivos similares ao se aproximarem. A ideia é criar uma rede descentralizada de transmissão contínua, sem a necessidade de interação humana para iniciar o processo. Dessa forma, o dispositivo A transferirá os dados para o dispositivo B, que, por sua vez, continuará o fluxo para o dispositivo C, e assim por diante.
