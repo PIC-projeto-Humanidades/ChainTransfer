@@ -1,0 +1,36 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos de logs e banco de dados temporários
+logs/
+*.log
+*.sqlite3
+*.db
+
+# Configurações do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Dependências instaladas
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Arquivos do editor de código
+.vscode/
+.idea/
+*.swp
+
+# Arquivos compilados
+*.so
+
+# Diretórios de build
+build/
+dist/
+*.egg-info/
