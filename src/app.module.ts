@@ -6,8 +6,9 @@ import { IdentifyModule } from './identify/identify.module';
 import { StorageModule } from './storage/storage.module';
 import { NdnModule } from './ndn/ndn.module';
 import { NdnController } from './ndn/ndn.controller';
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { RoutinesService } from './routines/routines.service';
 
 @Module({
   imports: [
@@ -29,4 +30,11 @@ import { SequelizeModule } from '@nestjs/sequelize';
     NdnController,],
   providers: [],
 })
-export class AppModule { }
+export class AppModule implements OnModuleInit {
+  constructor(private readonly routineService: RoutinesService) {}
+
+  onModuleInit() {
+    console.log('AppModule inicializado!');
+    this.routineService.startRoutine(); // Chama a rotina ao iniciar o módulo
+  }
+}

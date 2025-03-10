@@ -10,11 +10,11 @@ export class StorageService {
 
     async getFile({ fileName,sessao,node }:{ fileName:string,sessao:string ,node:string }) {
         let filesHasDownloaded = await this.logsService.getLogsBySession(sessao)
-        let hasFile = filesHasDownloaded.filter((e)=>e.sessao==sessao && e.node==node && e.fileName==fileName)
+        let hasFile = filesHasDownloaded.filter((e)=>e.fileName==fileName)
         if(hasFile.length>0){
             return ""
         }
-        this.logsService.logDownload({ fileName,sessao,node })
+        
         return this.storageRepository.getFile(fileName);
     }
 
