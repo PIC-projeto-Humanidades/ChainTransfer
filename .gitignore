@@ -1,37 +1,54 @@
-# Ambiente virtual
-.venv
-venv/
-venv
+# compiled output
+/dist
+/node_modules
+/build
 
-# Cache do Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# Arquivos de logs e banco de dados temporários
-logs/
-*.log
-*.sqlite3
-*.db
-
-# Configurações do sistema operacional
+# OS
 .DS_Store
-Thumbs.db
 
-# Dependências instaladas
-pip-log.txt
-pip-delete-this-directory.txt
+# Tests
+/coverage
+/.nyc_output
 
-# Arquivos do editor de código
-.vscode/
-.idea/
-*.swp
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
 
-# Arquivos compilados
-*.so
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-# Diretórios de build
-build/
-dist/
-*.egg-info/
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
