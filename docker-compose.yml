@@ -1,0 +1,24 @@
+version: '3.8'
+
+networks:
+  internal_network:
+    driver: bridge
+
+services:
+  nest1:
+    container_name: nest1
+    build: .
+    networks:
+      internal_network:
+        mac_address: "02:42:ac:11:00:02"  # MAC pré-definido
+    environment:
+      - NODE_ENV=production
+
+  nest2:
+    container_name: nest2
+    build: .
+    networks:
+      internal_network:
+        mac_address: "02:42:ac:11:00:03"  # MAC pré-definido
+    environment:
+      - NODE_ENV=production

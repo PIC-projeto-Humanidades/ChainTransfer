@@ -22,7 +22,7 @@ export class NdnController {
             console.log(`Download JÁ FOI realizado: Arquivo: ${fileName}, Sessão: ${sessao}`);
             return res.status(200).json({ status: "OK", message: "Download já realizado" });
         }
-        res.download(filePath);
+        res.status(201).download(filePath);
     }
     @Get('files')
     async listFiles(@Res() res: Response) {

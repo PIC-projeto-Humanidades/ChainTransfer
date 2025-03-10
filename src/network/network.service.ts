@@ -7,6 +7,13 @@ import { exec } from 'child_process';
 
 @Injectable()
 export class NetworkService {
+    getNamedDevices(){
+        return [
+            {node:"node-A",mac:"02:42:ac:11:00:02"},
+            {node:"node-B",mac:"02:42:ac:11:00:03"},
+        ]
+    }
+
     async getConnectedDevices(): Promise<{ ip: string, mac: string, hostname: string }[]> {
         return new Promise((resolve, reject) => {
             exec("arp -a", async (error, stdout) => {
