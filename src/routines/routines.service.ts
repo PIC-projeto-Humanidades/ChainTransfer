@@ -1,11 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import e from 'express';
 import { NetworkService } from 'src/network/network.service';
 import * as fs from 'fs';
 import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid'; // Para gerar UID caso necessário
+import { v4 as uuidv4 } from 'uuid'; 
 import { StorageService } from 'src/storage/storage.service';
 import fetch from 'node-fetch';
+
 
 @Injectable()
 export class RoutinesService implements OnModuleInit {
@@ -98,17 +98,18 @@ export class RoutinesService implements OnModuleInit {
                     node: node
                 })
             });
-            const blob = await responseDownloadFile.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-    
-            // Remover o link após o download
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+      // Obtém o arquivo como um buffer
+      const buffer = await responseDownloadFile.buffer();
+
+      // Caminho para salvar o arquivo na pasta ./../media_data
+      const filePath = path.join(__dirname, './../../media_data', fileName);
+
+      // Cria a pasta se não existir
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+
+      // Salva o arquivo na pasta
+      fs.writeFileSync(filePath, buffer);
+
     
             console.log("Download concluído!");
 
