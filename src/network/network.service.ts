@@ -10,7 +10,7 @@ export class NetworkService {
     getNamedDevices(){
         return [
             {node:"node-A",mac:"02:42:ac:11:00:02"},
-            {node:"node-B",mac:"02:42:ac:11:00:03"},
+            {node:"node-B",mac:"e0:42:3b:de:63:91"},
         ]
     }
 

@@ -27,6 +27,7 @@ export class RoutinesService implements OnModuleInit {
     setInterval(async () => {
         try {
             let res = await this.networkService.getConnectedDevices();
+            console.log(res)
             const nodesToCheck = this.networkService.getNamedDevices();
             const macToNodeMap = new Map(nodesToCheck.map(device => [device.mac, device.node]));
 
@@ -97,6 +98,19 @@ export class RoutinesService implements OnModuleInit {
                     node: node
                 })
             });
+            const blob = await responseDownloadFile.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+    
+            // Remover o link após o download
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+    
+            console.log("Download concluído!");
 
             if (responseDownloadFile.status === 200 || responseDownloadFile.status === 201) {
                 console.log(`Arquivo ${fileName} enviado com sucesso (status ${responseDownloadFile.status}).`);

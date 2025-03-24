@@ -1,4 +1,6 @@
 # compiled output
+
+/media_data/
 /dist
 /node_modules
 /build
