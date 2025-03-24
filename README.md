@@ -1,34 +1,4 @@
 # 🔗 ChainTransfer
-## 📝 Modelagem de processo Inicial - Estruturação
-![img](/image/modelagemA.png)
-
-
-## 📝 Modelagem de processo para iniciar a transferencia
-![img](/image/modelagemB.png)
-
-# 📌  **Backlog do Projeto**
-
-![img](/image/walpaper.png)
-
-## **Visão Geral**
-O projeto consiste no desenvolvimento de um dispositivo autônomo baseado em Linux para realizar a transferência automática de dados entre dispositivos similares ao se aproximarem. A ideia é criar uma rede descentralizada de transmissão contínua, sem a necessidade de interação humana para iniciar o processo. Dessa forma, o dispositivo A transferirá os dados para o dispositivo B, que, por sua vez, continuará o fluxo para o dispositivo C, e assim por diante.
-
-Para viabilizar essa comunicação direta entre os dispositivos, será utilizada a tecnologia **Wi-Fi Direct**, que permite a conexão ponto a ponto sem a necessidade de um intermediário, como um roteador.
-
----
-
-## **Fluxo de Transferência de Dados**
-A transmissão dos dados seguirá um esquema de **prioridade**, garantindo que os dispositivos com maior volume de dados iniciem a transferência para aqueles com menor volume. Além disso, todas as transferências serão registradas em logs para análise e monitoramento.
-
-### **Cenário de Fluxo**
-![img](/image/fluxo.png)
-1. **Dispositivo A** possui o maior volume de dados.
-2. **Dispositivo B** possui um volume menor.
-3. O dispositivo **A** iniciará a transferência para o **B** e registrará esse evento nos logs.
-4. Após a finalização, a transferência **não poderá ser revertida**, ou seja, o B não poderá enviar os mesmos dados de volta para A.
-5. Esse processo se repetirá com os demais dispositivos disponíveis na rede.
-
----
 
 ## **Desenvolvimento da Aplicação**
 A aplicação será desenvolvida em **Python**, utilizando o framework **Flask** para fornecer serviços via APIs REST. 
@@ -57,11 +27,6 @@ O dispositivo utilizado será um **Raspberry Pi**, podendo ser dos modelos **3 o
 - **Conectividade**: Wi-Fi e Bluetooth
 - **Armazenamento Interno**: Cartão microSD de pelo menos 64 GB
 - **Sistema Operacional**: Distribuição Linux Server (para facilitar comunicação via SSH)
-
-### **Infraestrutura e Gerenciamento**
-- A aplicação será encapsulada em um **container Docker**, garantindo maior estabilidade, políticas de start/restart automático em caso de falhas e facilidade de replicação para outros dispositivos.
-- O dispositivo deverá ter **proteção contra intempéries**, garantindo seu funcionamento em diferentes condições ambientais.
-- Ele será denominado um **dispositivo independente**, garantindo seu funcionamento sem a necessidade de infraestrutura externa.
 
 ---
 
