@@ -27,7 +27,6 @@ export class RoutinesService implements OnModuleInit {
     setInterval(async () => {
         try {
             let res = await this.networkService.getConnectedDevices();
-            console.log(res)
             const nodesToCheck = this.networkService.getNamedDevices();
             const macToNodeMap = new Map(nodesToCheck.map(device => [device.mac, device.node]));
 
@@ -57,10 +56,10 @@ export class RoutinesService implements OnModuleInit {
     const sessionId = `sessao-${formattedDate}`;
 
     const { node, mac, ip } = foundDevices[0];
-    console.log("Dispositivo - IP:", ip);
-    console.log("Dispositivo - MAC:", mac);
-    console.log("Dispositivo - Node:", node);
-    console.log("\n");
+    // console.log("Dispositivo - IP:", ip);
+    // console.log("Dispositivo - MAC:", mac);
+    // console.log("Dispositivo - Node:", node);
+    // console.log("\n");
 
     let res: any;
     let remoteFiles: string[] = [];
