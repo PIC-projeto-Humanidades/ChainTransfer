@@ -13,9 +13,33 @@
 ## **Visão Geral**
 O projeto consiste no desenvolvimento de um dispositivo autônomo baseado em Linux para realizar a transferência automática de dados entre dispositivos similares ao se aproximarem. A ideia é criar uma rede descentralizada de transmissão contínua, sem a necessidade de interação humana para iniciar o processo. Dessa forma, o dispositivo A transferirá os dados para o dispositivo B, que, por sua vez, continuará o fluxo para o dispositivo C, e assim por diante.
 
-Para viabilizar essa comunicação direta entre os dispositivos, será utilizada a tecnologia **Wi-Fi Direct**, que permite a conexão ponto a ponto sem a necessidade de um intermediário, como um roteador.
 
 ---
+
+A aplicacao foi dividida em modulos para separar a divisao de responsabilidades, seguindo o em 
+logs
+indentify
+monitoring
+network
+routines
+storage
+
+main module 
+
+logs:
+contem logs que seram propagados entre dispositivos, neste contexto existe a divisao service,module e models que detem o esquema de logs propagados e persistido via DB SQLite
+
+monitoring:
+monitoring mantem os endpoints status,device e feedback
+status mantem  uma especie de ping que pergunta ao servidor se o arquivo ja foi enviado ou nao,
+devices mantem o ping e scaneamneto da rede para verificar os devices encontrados,
+feedback ao acessasr esse endpoint e possivel comunicar o servidor que o arquivo foi recebido com sucesso
+
+ndn:
+ndn/files mantem endpoint para donwload de arquivo ou arquivos nomeados
+
+routines:
+mnatem um esquema de rotinas opara executar de maneira automatizada e organizada o envio/recebimento dos arquivos entre dispositivos mantendo a propagacao de feedback para envio de arquivos 
 
 ## **Fluxo de Transferência de Dados**
 A transmissão dos dados seguirá um esquema de **prioridade**, garantindo que os dispositivos com maior volume de dados iniciem a transferência para aqueles com menor volume. Além disso, todas as transferências serão registradas em logs para análise e monitoramento.
