@@ -1,0 +1,5 @@
+mkdocs>=1.4
+mkdocs-material
+mkdocstrings
+pygments
+requests

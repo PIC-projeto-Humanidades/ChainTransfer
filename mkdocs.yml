@@ -1,0 +1,21 @@
+site_name: ChainTransfer
+site_description: Projeto de replicação automática de arquivos via rede local
+theme:
+  name: material
+  language: pt
+nav:
+  - Introdução: index.md
+  - Instalação e Execução: instalacao.md
+  - Estrutura do Projeto: estrutura.md
+  - Configurações e Scripts: configuracoes.md
+  - Artefatos Distribuídos: dist.md
+  - Testes: testes.md
+  - Módulos:
+      - Routines: modules/routines.md
+      - Storage: modules/storage.md
+      - Logs: modules/logs.md
+      - Monitoring: modules/monitoring.md
+      - Network: modules/network.md
+      - Identify: modules/identify.md
+      - NDN: modules/ndn.md
+  - Imagens: imagens.md
