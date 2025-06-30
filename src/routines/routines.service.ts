@@ -182,7 +182,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     const devices = this.networkService.getNamedDevices();
     const availabilityChecks = devices.map(async (device) => {
       try {
-        const response = await fetch(`http://${device.ip}/health`, { 
+        const response = await fetch(`http://${device.ip}:3000/health`, { 
           timeout: 5000 
         });
         return response.ok ? device : null;
