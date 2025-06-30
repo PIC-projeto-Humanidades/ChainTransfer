@@ -6,13 +6,13 @@ import * as ping from 'ping';
 export class NetworkService {
     getNamedDevices() {
         return [
-            { node: "node-A", mac: "a4:63:a1:5a:9d:95" },
-            { node: "node-B", mac: "60:03:08:90:8b:1c" },
+            { node: "node-A", ip: "192.168.0.2" },
+            { node: "node-B", ip: "192.168.0.2" },
         ];
     }
 
     async getConnectedDevices(): Promise<{ ip: string, mac: string, hostname: string }[]> {
-        const baseIp = '192.168.0.'; // ajusta se tua rede for diferente (ex: 192.168.1.x)
+        const baseIp = '192.168.0.'; 
 
         // Faz ping em todos os IPs da faixa
         const pingPromises = Array.from({ length: 254 }, (_, i) => i + 1)

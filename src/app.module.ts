@@ -9,6 +9,7 @@ import { NdnController } from './ndn/ndn.controller';
 import { Module, OnModuleInit } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { RoutinesService } from './routines/routines.service';
+import { HealthModule } from 'health/health.module';
 
 @Module({
   imports: [
@@ -19,15 +20,15 @@ import { RoutinesService } from './routines/routines.service';
     IdentifyModule,
     StorageModule,
     NdnModule,
+    HealthModule,
     SequelizeModule.forRoot({
       dialect: 'sqlite',
       storage: './media.db',
       autoLoadModels: true,
-      synchronize: true, // Sincroniza automaticamente as tabelas
+      synchronize: true,
     }),
   ],
-  controllers: [
-    NdnController,],
+  controllers: [NdnController],
   providers: [],
 })
 export class AppModule implements OnModuleInit {
@@ -35,6 +36,6 @@ export class AppModule implements OnModuleInit {
 
   onModuleInit() {
     console.log('AppModule inicializado!');
-    this.routineService.startRoutine(); // Chama a rotina ao iniciar o módulo
+    this.routineService.startDTNRoutine(); 
   }
 }
