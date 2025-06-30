@@ -10,7 +10,7 @@ import * as fs from 'fs';
 @Injectable()
 export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(RoutinesService.name);
-  private readonly mediaPath = path.resolve(__dirname, "../../media_data");
+  private readonly mediaPath = path.resolve(process.cwd(), "media_data");
   private readonly dtnStoragePath = path.resolve(this.mediaPath, "dtn_storage");
   private readonly pendingTransfersFile = path.resolve(this.dtnStoragePath, "pending_transfers.json");
   private readonly bundlesPath = path.resolve(this.dtnStoragePath, "bundles");
@@ -73,26 +73,45 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async ensureDirectoriesExist() {
     try {
-      if (!fs.existsSync(this.mediaPath)) {
-        fs.mkdirSync(this.mediaPath, { recursive: true });
-      }
-      if (!fs.existsSync(this.dtnStoragePath)) {
-        fs.mkdirSync(this.dtnStoragePath, { recursive: true });
-      }
-      if (!fs.existsSync(this.bundlesPath)) {
-        fs.mkdirSync(this.bundlesPath, { recursive: true });
-      }
-      if (!fs.existsSync(this.pendingTransfersFile)) {
-        fs.writeFileSync(this.pendingTransfersFile, JSON.stringify([], null, 2));
-      }
-      if (!fs.existsSync(this.syncStatsFile)) {
-        fs.writeFileSync(this.syncStatsFile, JSON.stringify({}, null, 2));
-      }
+        this.logger.log(`Checking/creating directories at: ${this.mediaPath}`);
+        
+        // Create media_data directory if it doesn't exist
+        if (!fs.existsSync(this.mediaPath)) {
+            this.logger.log(`Creating media directory: ${this.mediaPath}`);
+            fs.mkdirSync(this.mediaPath, { recursive: true });
+            this.logger.log(`Media directory created successfully`);
+        }
+
+        // Create dtn_storage directory
+        if (!fs.existsSync(this.dtnStoragePath)) {
+            this.logger.log(`Creating DTN storage directory: ${this.dtnStoragePath}`);
+            fs.mkdirSync(this.dtnStoragePath, { recursive: true });
+        }
+
+        // Create bundles directory
+        if (!fs.existsSync(this.bundlesPath)) {
+            this.logger.log(`Creating bundles directory: ${this.bundlesPath}`);
+            fs.mkdirSync(this.bundlesPath, { recursive: true });
+        }
+
+        // Initialize pending transfers file
+        if (!fs.existsSync(this.pendingTransfersFile)) {
+            this.logger.log(`Initializing pending transfers file`);
+            fs.writeFileSync(this.pendingTransfersFile, JSON.stringify([], null, 2));
+        }
+
+        // Initialize sync stats file
+        if (!fs.existsSync(this.syncStatsFile)) {
+            this.logger.log(`Initializing sync stats file`);
+            fs.writeFileSync(this.syncStatsFile, JSON.stringify({}, null, 2));
+        }
+
+        this.logger.log('All directories and files verified/created');
     } catch (error) {
-      this.logger.error('Error creating directories:', error);
-      throw error;
+        this.logger.error('Error creating directories:', error);
+        throw new Error(`Failed to initialize storage directories: ${error.message}`);
     }
-  }
+}
 
   private async initialFileProcessing() {
     try {
