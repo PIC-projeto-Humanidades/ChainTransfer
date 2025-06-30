@@ -6,6 +6,8 @@ import { StorageService } from '../storage/storage.service';
 import fetch from 'node-fetch';
 import { LogsService } from '../logs/logs.service';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as dns from 'dns';
 
 @Injectable()
 export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
@@ -14,6 +16,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   private readonly dtnStoragePath = path.resolve(this.mediaPath, "dtn_storage");
   private readonly pendingTransfersFile = path.resolve(this.dtnStoragePath, "pending_transfers.json");
   private readonly bundlesPath = path.resolve(this.dtnStoragePath, "bundles");
+  private readonly syncStatsFile = path.resolve(this.dtnStoragePath, "sync_stats.json");
   private intervalId: NodeJS.Timeout;
   private fileCheckInterval: NodeJS.Timeout;
   private processedFiles = new Set<string>();
@@ -25,7 +28,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   ) {}
 
   async onModuleInit() {
-    this.logger.log('Inicializando rotina DTN...');
+    this.logger.log('Initializing DTN routine...');
     await this.ensureDirectoriesExist();
     await this.initialFileProcessing();
   }
@@ -36,7 +39,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   }
 
   startDTNRoutine() {
-    this.logger.log('Iniciando rotina DTN principal (intervalo de 30 segundos)');
+    this.logger.log('Starting main DTN routine (30s interval)');
     
     if (this.intervalId) {
       clearInterval(this.intervalId);
@@ -47,15 +50,16 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         await this.dtnSyncCycle();
         await this.processPendingTransfers();
       } catch (error) {
-        this.logger.error('Erro no ciclo DTN:', error);
+        this.logger.error('Error in DTN cycle:', error);
       }
     }, 30000);
 
+    // Run immediately on startup
     this.dtnSyncCycle();
   }
 
   private startFileMonitor() {
-    this.logger.log('Iniciando monitoramento de arquivos (intervalo de 5 segundos)');
+    this.logger.log('Starting file monitoring (5s interval)');
     
     if (this.fileCheckInterval) {
       clearInterval(this.fileCheckInterval);
@@ -65,79 +69,9 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       try {
         await this.processNewFiles();
       } catch (error) {
-        this.logger.error('Erro ao monitorar arquivos:', error);
+        this.logger.error('Error monitoring files:', error);
       }
     }, 5000);
-  }
-
-  private async initialFileProcessing() {
-    try {
-      const files = await this.storageService.listFiles();
-      for (const file of files) {
-        await this.processFile(file);
-      }
-    } catch (error) {
-      this.logger.error('Erro no processamento inicial de arquivos:', error);
-    }
-  }
-
-  private async processNewFiles() {
-    try {
-      const files = await this.storageService.listFiles();
-      for (const file of files) {
-        if (!this.processedFiles.has(file)) {
-          await this.processFile(file);
-          this.processedFiles.add(file);
-        }
-      }
-    } catch (error) {
-      this.logger.error('Erro ao processar novos arquivos:', error);
-    }
-  }
-
-  private async processFile(filename: string) {
-    try {
-      const filePath = path.join(this.mediaPath, filename);
-      
-      if (!fs.existsSync(filePath)) return;
-      if (!fs.lstatSync(filePath).isFile()) return;
-
-      const regex = /^(.+)-([a-f0-9\-]+)\.\w+$/;
-      if (regex.test(filename)) return;
-
-      const fileExt = path.extname(filename);
-      const fileName = path.basename(filename, fileExt);
-      const newFilename = `${fileName}-${uuidv4()}${fileExt}`;
-
-      // Usa o storageService para renomear o arquivo
-      await this.storageService.renameFile(filename, newFilename);
-      this.logger.log(`Arquivo renomeado: ${filename} -> ${newFilename}`);
-
-      await this.createBundleFromFile(newFilename);
-    } catch (error) {
-      this.logger.error(`Erro ao processar arquivo ${filename}:`, error);
-    }
-}
-  private async createBundleFromFile(filename: string) {
-    const bundleId = `bundle-${uuidv4()}`;
-    const bundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
-    
-    const bundle = {
-      id: bundleId,
-      filename,
-      originalPath: path.join(this.mediaPath, filename),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      attempts: 0,
-      sessionId: `session-${new Date().getTime()}`
-    };
-
-    try {
-      fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
-      this.logger.log(`Bundle criado para arquivo ${filename}`);
-    } catch (error) {
-      this.logger.error(`Erro ao criar bundle para ${filename}:`, error);
-    }
   }
 
   private async ensureDirectoriesExist() {
@@ -154,18 +88,93 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       if (!fs.existsSync(this.pendingTransfersFile)) {
         fs.writeFileSync(this.pendingTransfersFile, JSON.stringify([], null, 2));
       }
+      if (!fs.existsSync(this.syncStatsFile)) {
+        fs.writeFileSync(this.syncStatsFile, JSON.stringify({}, null, 2));
+      }
     } catch (error) {
-      this.logger.error('Erro ao criar diretórios:', error);
+      this.logger.error('Error creating directories:', error);
       throw error;
     }
   }
 
+  private async initialFileProcessing() {
+    try {
+      const files = await this.storageService.listFiles();
+      for (const file of files) {
+        await this.processFile(file);
+      }
+    } catch (error) {
+      this.logger.error('Error in initial file processing:', error);
+    }
+  }
+
+  private async processNewFiles() {
+    try {
+      const files = await this.storageService.listFiles();
+      for (const file of files) {
+        if (!this.processedFiles.has(file)) {
+          await this.processFile(file);
+          this.processedFiles.add(file);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error processing new files:', error);
+    }
+  }
+
+  private async processFile(filename: string) {
+    try {
+      const filePath = path.join(this.mediaPath, filename);
+      
+      if (!fs.existsSync(filePath)) return;
+      if (!fs.lstatSync(filePath).isFile()) return;
+
+      // Skip already processed files (with UUID in name)
+      const regex = /^(.+)-([a-f0-9\-]{36})\.\w+$/;
+      if (regex.test(filename)) return;
+
+      const fileExt = path.extname(filename);
+      const fileName = path.basename(filename, fileExt);
+      const newFilename = `${fileName}-${uuidv4()}${fileExt}`;
+
+      await this.storageService.renameFile(filename, newFilename);
+      this.logger.log(`File renamed: ${filename} -> ${newFilename}`);
+
+      await this.createBundleFromFile(newFilename);
+    } catch (error) {
+      this.logger.error(`Error processing file ${filename}:`, error);
+    }
+  }
+
+  private async createBundleFromFile(filename: string) {
+    const bundleId = `bundle-${uuidv4()}`;
+    const bundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
+    
+    const bundle = {
+      id: bundleId,
+      filename,
+      originalPath: path.join(this.mediaPath, filename),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      sessionId: `session-${new Date().getTime()}`,
+      node: this.networkService.getSelfNodeName() // Now using the correct method
+    };
+
+    try {
+      fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2));
+      this.logger.log(`Bundle created for file ${filename}`);
+    } catch (error) {
+      this.logger.error(`Error creating bundle for ${filename}:`, error);
+    }
+}
+
   private async dtnSyncCycle() {
-    this.logger.log('Iniciando ciclo de sincronização DTN');
+    this.logger.log('Starting DTN sync cycle');
     const availableNodes = await this.checkAvailableNodes();
     
     if (availableNodes.length === 0) {
-      this.logger.log('Nenhum nó disponível para sincronização');
+      this.logger.log('No nodes available for synchronization');
       return;
     }
 
@@ -173,129 +182,93 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       try {
         await this.syncWithNode(node);
       } catch (error) {
-        this.logger.error(`Erro ao sincronizar com nó ${node.node}:`, error);
+        this.logger.error(`Error syncing with node ${node.node}:`, error);
       }
     }
   }
 
   private async checkAvailableNodes() {
     const devices = this.networkService.getNamedDevices();
-    const localIp = await this.getLocalIpAddress(); // Novo método para obter IP local
     
     const availabilityChecks = devices.map(async (device) => {
-        // Pula a verificação se for o próprio IP
-        if (device.ip === localIp) {
-            return null;
-        }
+      if (device.selfhosted) {
+        this.logger.debug(`Ignoring selfhosted node: ${device.ip}`);
+        return null;
+      }
 
-        try {
-            const response = await fetch(`http://${device.ip}:3000/health`, { 
-                timeout: 5000 
-            });
-            return response.ok ? device : null;
-        } catch {
-            return null;
-        }
+      try {
+        const response = await fetch(`http://${device.ip}:3000/health`, { 
+          timeout: 5000 
+        });
+        return response.ok ? device : null;
+      } catch {
+        return null;
+      }
     });
 
     return (await Promise.all(availabilityChecks)).filter(node => node !== null);
-    }
-    private async getLocalIpAddress(): Promise<string> {
-        return new Promise((resolve, reject) => {
-            require('dns').lookup(require('os').hostname(), (err, addr) => {
-                if (err) {
-                    this.logger.error('Erro ao obter IP local:', err);
-                    resolve('');
-                } else {
-                    resolve(addr);
-                }
-            });
-        });
-    }
-    private async syncWithNode(node: any) {
-        try {
-            // 1. Verifica se não é o próprio nó
-            const localIp = await this.getLocalIpAddress();
-            if (node.ip === localIp) {
-                this.logger.log(`Ignorando sincronização com próprio nó (${node.ip})`);
-                return;
-            }
-    
-            this.logger.log(`Iniciando sincronização com nó ${node.node} (${node.ip})`);
-            
-            // 2. Obtém lista de bundles remotos com timeout
-            let remoteBundles: string[];
-            try {
-                const response = await fetch(`http://${node.ip}:3000/ndn/bundles`, {
-                    timeout: 10000 // 10 segundos
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP status ${response.status}`);
-                }
-                
-                remoteBundles = await response.json();
-            } catch (error) {
-                this.logger.error(`Falha ao obter bundles de ${node.node}:`, error);
-                throw error;
-            }
-    
-            // 3. Obtém lista de bundles locais
-            const localBundles = fs.existsSync(this.bundlesPath) 
-                ? fs.readdirSync(this.bundlesPath)
-                    .filter(file => file.endsWith('.json'))
-                    .map(file => path.basename(file, '.json'))
-                : [];
-    
-            // 4. Filtra bundles para download
-            const bundlesToDownload = remoteBundles.filter(bundle => 
-                !localBundles.includes(bundle) &&
-                !this.isBundlePending(bundle) // Evita duplicar transferências pendentes
-            );
-    
-            // 5. Processa downloads se necessário
-            if (bundlesToDownload.length > 0) {
-                this.logger.log(`Encontrados ${bundlesToDownload.length} novos bundles em ${node.node}`);
-                await this.downloadBundles(bundlesToDownload, node.ip);
-                
-                // Atualiza estatísticas
-                await this.updateSyncStats(node.node, bundlesToDownload.length);
-            } else {
-                this.logger.debug(`Nenhum novo bundle disponível em ${node.node}`);
-            }
-    
-            this.logger.log(`Sincronização com ${node.node} concluída com sucesso`);
-    
-        } catch (error) {
-            this.logger.error(`Erro durante sincronização com ${node.node}:`, error);
-            throw error;
-        }
-    }
-    
-    // Métodos auxiliares adicionais:
-    
-    // private async getLocalIpAddress(): Promise<string> {
-    //     return new Promise((resolve) => {
-    //         require('dns').lookup(require('os').hostname(), (err, addr) => {
-    //             resolve(err ? '' : addr);
-    //         });
-    //     });
-    // }
-    
-    private isBundlePending(bundleId: string): boolean {
-        try {
-            const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
-            return pendingTransfers.some((t: any) => t.bundleId === bundleId);
-        } catch {
-            return false;
-        }
-    }
-    
-    private async updateSyncStats(nodeName: string, newBundles: number) {
-        // Implementação para registrar estatísticas de sincronização
-        // Pode ser salvo em um arquivo ou banco de dados
-    }
+  }
 
+  private async syncWithNode(node: any) {
+    try {
+      // Skip sync with self
+      const localIp = await this.getLocalIpAddress();
+      if (node.ip === localIp) {
+        this.logger.log(`Skipping sync with self node (${node.ip})`);
+        return;
+      }
+  
+      this.logger.log(`Starting sync with node ${node.node} (${node.ip})`);
+      
+      // Get remote bundles
+      let remoteBundles: string[];
+      try {
+        const response = await fetch(`http://${node.ip}:3000/ndn/bundles`, {
+          timeout: 10000
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP status ${response.status}`);
+        }
+        
+        remoteBundles = await response.json();
+      } catch (error) {
+        this.logger.error(`Failed to get bundles from ${node.node}:`, error);
+        throw error;
+      }
+  
+      // Get local bundles
+      const localBundles = fs.existsSync(this.bundlesPath) 
+        ? fs.readdirSync(this.bundlesPath)
+            .filter(file => file.endsWith('.json'))
+            .map(file => path.basename(file, '.json'))
+        : [];
+  
+      // Filter bundles for download
+      const bundlesToDownload = remoteBundles.filter(bundle => 
+        !localBundles.includes(bundle) &&
+        !this.isBundlePending(bundle)
+      );
+  
+      // Process downloads if needed
+      if (bundlesToDownload.length > 0) {
+        this.logger.log(`Found ${bundlesToDownload.length} new bundles in ${node.node}`);
+        await this.downloadBundles(bundlesToDownload, node.ip);
+        
+        // Update statistics
+        await this.updateSyncStats(node.node, bundlesToDownload.length);
+      } else {
+        this.logger.debug(`No new bundles available in ${node.node}`);
+      }
+  
+      this.logger.log(`Sync with ${node.node} completed successfully`);
+  
+    } catch (error) {
+      this.logger.error(`Error during sync with ${node.node}:`, error);
+      throw error;
+    }
+  }
+  
   private async downloadBundles(bundleIds: string[], nodeIp: string) {
     for (const bundleId of bundleIds) {
       try {
@@ -304,10 +277,10 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         
         const bundleData = await response.json();
         
-        // Verifica se o arquivo já existe
+        // Check if file already exists
         const localFiles = await this.storageService.listFiles();
         if (localFiles.includes(bundleData.filename)) {
-          this.logger.log(`Arquivo ${bundleData.filename} já existe localmente`);
+          this.logger.log(`File ${bundleData.filename} already exists locally`);
           continue;
         }
 
@@ -316,7 +289,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         
         const fileBuffer = await fileResponse.buffer();
         
-        // Usa o storageService para salvar o arquivo
         await this.storageService.saveFile({
           filename: bundleData.filename,
           buffer: fileBuffer,
@@ -324,19 +296,18 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
           node: bundleData.node || 'unknown'
         });
 
-        // Registrar no log de downloads
         await this.logsService.logDownload({
           fileName: bundleData.filename,
           sessao: bundleData.sessionId || 'default-session',
           node: bundleData.node || 'unknown'
         });
 
-        // Salva o bundle localmente
+        // Save the bundle locally
         const localBundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
         fs.writeFileSync(localBundlePath, JSON.stringify(bundleData, null, 2));
         
       } catch (error) {
-        this.logger.error(`Erro ao baixar bundle ${bundleId}:`, error);
+        this.logger.error(`Error downloading bundle ${bundleId}:`, error);
         await this.addPendingTransfer(bundleId, nodeIp, 'download');
       }
     }
@@ -345,16 +316,24 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   private async addPendingTransfer(bundleId: string, nodeIp: string, type: 'download' | 'upload') {
     try {
       const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
-      pendingTransfers.push({
-        bundleId,
-        nodeIp,
-        type,
-        timestamp: new Date().toISOString(),
-        attempts: 0
-      });
-      fs.writeFileSync(this.pendingTransfersFile, JSON.stringify(pendingTransfers, null, 2));
+      
+      // Check if transfer already exists
+      const existingTransfer = pendingTransfers.find((t: any) => 
+        t.bundleId === bundleId && t.nodeIp === nodeIp && t.type === type
+      );
+      
+      if (!existingTransfer) {
+        pendingTransfers.push({
+          bundleId,
+          nodeIp,
+          type,
+          timestamp: new Date().toISOString(),
+          attempts: 0
+        });
+        fs.writeFileSync(this.pendingTransfersFile, JSON.stringify(pendingTransfers, null, 2));
+      }
     } catch (error) {
-      this.logger.error('Erro ao adicionar transferência pendente:', error);
+      this.logger.error('Error adding pending transfer:', error);
     }
   }
 
@@ -363,7 +342,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
       if (pendingTransfers.length === 0) return;
 
-      this.logger.log(`Processando ${pendingTransfers.length} transferências pendentes`);
+      this.logger.log(`Processing ${pendingTransfers.length} pending transfers`);
       
       const updatedPendingTransfers = [];
 
@@ -377,15 +356,22 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
             await this.uploadBundle(transfer.bundleId, transfer.nodeIp);
           }
           
+          // Remove from pending if successful
         } catch (error) {
-          this.logger.error(`Falha na transferência ${transfer.bundleId}:`, error);
-          updatedPendingTransfers.push(transfer);
+          this.logger.error(`Failed transfer ${transfer.bundleId}:`, error);
+          
+          // Keep in pending if less than 5 attempts
+          if (transfer.attempts < 5) {
+            updatedPendingTransfers.push(transfer);
+          } else {
+            this.logger.warn(`Removing transfer ${transfer.bundleId} after 5 failed attempts`);
+          }
         }
       }
 
       fs.writeFileSync(this.pendingTransfersFile, JSON.stringify(updatedPendingTransfers, null, 2));
     } catch (error) {
-      this.logger.error('Erro ao processar transferências pendentes:', error);
+      this.logger.error('Error processing pending transfers:', error);
     }
   }
 
@@ -394,7 +380,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       const bundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
       const bundleData = JSON.parse(fs.readFileSync(bundlePath, 'utf-8'));
       
-      // Obtém o arquivo usando o storageService
       const fileBuffer = await this.storageService.getFileBuffer(bundleData.filename);
       
       const response = await fetch(`http://${nodeIp}:3000/ndn/receive-bundle`, {
@@ -408,10 +393,50 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
       if (!response.ok) throw new Error(`Status ${response.status}`);
       
-      this.logger.log(`Bundle ${bundleId} enviado com sucesso para ${nodeIp}`);
+      this.logger.log(`Bundle ${bundleId} successfully sent to ${nodeIp}`);
     } catch (error) {
-      this.logger.error(`Erro ao enviar bundle ${bundleId}:`, error);
+      this.logger.error(`Error sending bundle ${bundleId}:`, error);
       throw error;
     }
+  }
+
+  private isBundlePending(bundleId: string): boolean {
+    try {
+      const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
+      return pendingTransfers.some((t: any) => t.bundleId === bundleId);
+    } catch {
+      return false;
+    }
+  }
+  
+  private async updateSyncStats(nodeName: string, newBundles: number) {
+    try {
+      const stats = JSON.parse(fs.readFileSync(this.syncStatsFile, 'utf-8')) || {};
+      
+      if (!stats[nodeName]) {
+        stats[nodeName] = { syncCount: 0, totalBundles: 0 };
+      }
+      
+      stats[nodeName].syncCount = (stats[nodeName].syncCount || 0) + 1;
+      stats[nodeName].totalBundles = (stats[nodeName].totalBundles || 0) + newBundles;
+      stats[nodeName].lastSync = new Date().toISOString();
+      
+      fs.writeFileSync(this.syncStatsFile, JSON.stringify(stats, null, 2));
+    } catch (error) {
+      this.logger.error('Error updating sync stats:', error);
+    }
+  }
+
+  private async getLocalIpAddress(): Promise<string> {
+    return new Promise((resolve) => {
+      dns.lookup(os.hostname(), (err, addr) => {
+        if (err) {
+          this.logger.error('Error getting local IP:', err);
+          resolve('');
+        } else {
+          resolve(addr);
+        }
+      });
+    });
   }
 }

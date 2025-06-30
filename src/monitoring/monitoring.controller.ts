@@ -10,10 +10,10 @@ import { NetworkService } from 'src/network/network.service';
 export class MonitoringController {
     constructor(private readonly networkService: NetworkService,private readonly logsService: LogsService) {}
 
-    @Get('devices')
-    async getConnectedDevices() {
-        return this.networkService.getConnectedDevices();
-    }
+    // @Get('devices')
+    // async getConnectedDevices() {
+    //     return this.networkService.getConnectedDevices();
+    // }
 
     @Get('status/:sessao')
     async statusDownload(
