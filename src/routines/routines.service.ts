@@ -126,9 +126,13 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async processNewFiles() {
     try {
+      this.logger.debug('Checking for new files...');
       const files = await this.storageService.listFiles();
+      this.logger.debug(`Found files: ${JSON.stringify(files)}`);
+      
       for (const file of files) {
         if (!this.processedFiles.has(file)) {
+          this.logger.debug(`Processing new file: ${file}`);
           await this.processFile(file);
           this.processedFiles.add(file);
         }
@@ -136,22 +140,34 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     } catch (error) {
       this.logger.error('Error processing new files:', error);
     }
-  }
+}
 
-  private async processFile(filename: string) {
+private async processFile(filename: string) {
     try {
+      this.logger.debug(`Starting to process file: ${filename}`);
       const filePath = path.join(this.mediaPath, filename);
       
-      if (!fs.existsSync(filePath)) return;
-      if (!fs.lstatSync(filePath).isFile()) return;
+      if (!fs.existsSync(filePath)) {
+        this.logger.warn(`File does not exist: ${filePath}`);
+        return;
+      }
+      
+      if (!fs.lstatSync(filePath).isFile()) {
+        this.logger.warn(`Path is not a file: ${filePath}`);
+        return;
+      }
 
       const regex = /^(.+)-([a-f0-9\-]{36})\.\w+$/;
-      if (regex.test(filename)) return;
+      if (regex.test(filename)) {
+        this.logger.debug(`File already has UUID: ${filename}`);
+        return;
+      }
 
       const fileExt = path.extname(filename);
       const fileName = path.basename(filename, fileExt);
       const newFilename = `${fileName}-${uuidv4()}${fileExt}`;
 
+      this.logger.debug(`Renaming file to: ${newFilename}`);
       await this.storageService.renameFile(filename, newFilename);
       this.logger.log(`File renamed: ${filename} -> ${newFilename}`);
 
@@ -159,7 +175,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     } catch (error) {
       this.logger.error(`Error processing file ${filename}:`, error);
     }
-  }
+}
 
   private async createBundleFromFile(filename: string) {
     const bundleId = `bundle-${uuidv4()}`;
