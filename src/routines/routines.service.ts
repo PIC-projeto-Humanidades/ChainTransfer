@@ -6,8 +6,6 @@ import { StorageService } from '../storage/storage.service';
 import fetch from 'node-fetch';
 import { LogsService } from '../logs/logs.service';
 import * as fs from 'fs';
-import * as os from 'os';
-import * as dns from 'dns';
 
 @Injectable()
 export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
@@ -54,7 +52,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       }
     }, 30000);
 
-    // Run immediately on startup
     this.dtnSyncCycle();
   }
 
@@ -129,7 +126,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       if (!fs.existsSync(filePath)) return;
       if (!fs.lstatSync(filePath).isFile()) return;
 
-      // Skip already processed files (with UUID in name)
       const regex = /^(.+)-([a-f0-9\-]{36})\.\w+$/;
       if (regex.test(filename)) return;
 
@@ -158,7 +154,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       createdAt: new Date().toISOString(),
       attempts: 0,
       sessionId: `session-${new Date().getTime()}`,
-      node: this.networkService.getSelfNodeName() // Now using the correct method
+      node: this.networkService.getSelfNodeName()
     };
 
     try {
@@ -167,7 +163,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     } catch (error) {
       this.logger.error(`Error creating bundle for ${filename}:`, error);
     }
-}
+  }
 
   private async dtnSyncCycle() {
     this.logger.log('Starting DTN sync cycle');
@@ -211,16 +207,14 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async syncWithNode(node: any) {
     try {
-      // Skip sync with self
-      const localIp = await this.getLocalIpAddress();
-      if (node.ip === localIp) {
+      // Skip sync with self using network service
+      if (this.networkService.isSelfHosted(node.ip)) {
         this.logger.log(`Skipping sync with self node (${node.ip})`);
         return;
       }
   
       this.logger.log(`Starting sync with node ${node.node} (${node.ip})`);
       
-      // Get remote bundles
       let remoteBundles: string[];
       try {
         const response = await fetch(`http://${node.ip}:3000/ndn/bundles`, {
@@ -237,32 +231,26 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         throw error;
       }
   
-      // Get local bundles
       const localBundles = fs.existsSync(this.bundlesPath) 
         ? fs.readdirSync(this.bundlesPath)
             .filter(file => file.endsWith('.json'))
             .map(file => path.basename(file, '.json'))
         : [];
   
-      // Filter bundles for download
       const bundlesToDownload = remoteBundles.filter(bundle => 
         !localBundles.includes(bundle) &&
         !this.isBundlePending(bundle)
       );
   
-      // Process downloads if needed
       if (bundlesToDownload.length > 0) {
         this.logger.log(`Found ${bundlesToDownload.length} new bundles in ${node.node}`);
         await this.downloadBundles(bundlesToDownload, node.ip);
-        
-        // Update statistics
         await this.updateSyncStats(node.node, bundlesToDownload.length);
       } else {
         this.logger.debug(`No new bundles available in ${node.node}`);
       }
   
       this.logger.log(`Sync with ${node.node} completed successfully`);
-  
     } catch (error) {
       this.logger.error(`Error during sync with ${node.node}:`, error);
       throw error;
@@ -277,7 +265,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         
         const bundleData = await response.json();
         
-        // Check if file already exists
         const localFiles = await this.storageService.listFiles();
         if (localFiles.includes(bundleData.filename)) {
           this.logger.log(`File ${bundleData.filename} already exists locally`);
@@ -302,7 +289,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
           node: bundleData.node || 'unknown'
         });
 
-        // Save the bundle locally
         const localBundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
         fs.writeFileSync(localBundlePath, JSON.stringify(bundleData, null, 2));
         
@@ -317,7 +303,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     try {
       const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
       
-      // Check if transfer already exists
       const existingTransfer = pendingTransfers.find((t: any) => 
         t.bundleId === bundleId && t.nodeIp === nodeIp && t.type === type
       );
@@ -355,12 +340,9 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
           } else {
             await this.uploadBundle(transfer.bundleId, transfer.nodeIp);
           }
-          
-          // Remove from pending if successful
         } catch (error) {
           this.logger.error(`Failed transfer ${transfer.bundleId}:`, error);
           
-          // Keep in pending if less than 5 attempts
           if (transfer.attempts < 5) {
             updatedPendingTransfers.push(transfer);
           } else {
@@ -425,18 +407,5 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     } catch (error) {
       this.logger.error('Error updating sync stats:', error);
     }
-  }
-
-  private async getLocalIpAddress(): Promise<string> {
-    return new Promise((resolve) => {
-      dns.lookup(os.hostname(), (err, addr) => {
-        if (err) {
-          this.logger.error('Error getting local IP:', err);
-          resolve('');
-        } else {
-          resolve(addr);
-        }
-      });
-    });
   }
 }
