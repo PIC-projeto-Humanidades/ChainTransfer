@@ -180,45 +180,121 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async checkAvailableNodes() {
     const devices = this.networkService.getNamedDevices();
+    const localIp = await this.getLocalIpAddress(); // Novo método para obter IP local
+    
     const availabilityChecks = devices.map(async (device) => {
-      try {
-        const response = await fetch(`http://${device.ip}:3000/health`, { 
-          timeout: 5000 
-        });
-        return response.ok ? device : null;
-      } catch {
-        return null;
-      }
+        // Pula a verificação se for o próprio IP
+        if (device.ip === localIp) {
+            return null;
+        }
+
+        try {
+            const response = await fetch(`http://${device.ip}:3000/health`, { 
+                timeout: 5000 
+            });
+            return response.ok ? device : null;
+        } catch {
+            return null;
+        }
     });
 
     return (await Promise.all(availabilityChecks)).filter(node => node !== null);
-  }
-
-  private async syncWithNode(node: any) {
-    this.logger.log(`Sincronizando com nó ${node.node} (${node.ip})`);
-    
-    let remoteBundles: string[];
-    try {
-      const response = await fetch(`http://${node.ip}:3000/ndn/bundles`);
-      remoteBundles = await response.json();
-    } catch (error) {
-      this.logger.error(`Erro ao obter bundles de ${node.node}:`, error);
-      return;
     }
-
-    const localBundles = fs.readdirSync(this.bundlesPath)
-      .filter(file => file.endsWith('.json'))
-      .map(file => path.basename(file, '.json'));
-
-    const bundlesToDownload = remoteBundles.filter(bundle => !localBundles.includes(bundle));
-    
-    if (bundlesToDownload.length > 0) {
-      this.logger.log(`Bundles para baixar de ${node.node}: ${bundlesToDownload.length}`);
-      await this.downloadBundles(bundlesToDownload, node.ip);
-    } else {
-      this.logger.log(`Nenhum novo bundle para baixar de ${node.node}`);
+    private async getLocalIpAddress(): Promise<string> {
+        return new Promise((resolve, reject) => {
+            require('dns').lookup(require('os').hostname(), (err, addr) => {
+                if (err) {
+                    this.logger.error('Erro ao obter IP local:', err);
+                    resolve('');
+                } else {
+                    resolve(addr);
+                }
+            });
+        });
     }
-  }
+    private async syncWithNode(node: any) {
+        try {
+            // 1. Verifica se não é o próprio nó
+            const localIp = await this.getLocalIpAddress();
+            if (node.ip === localIp) {
+                this.logger.log(`Ignorando sincronização com próprio nó (${node.ip})`);
+                return;
+            }
+    
+            this.logger.log(`Iniciando sincronização com nó ${node.node} (${node.ip})`);
+            
+            // 2. Obtém lista de bundles remotos com timeout
+            let remoteBundles: string[];
+            try {
+                const response = await fetch(`http://${node.ip}:3000/ndn/bundles`, {
+                    timeout: 10000 // 10 segundos
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP status ${response.status}`);
+                }
+                
+                remoteBundles = await response.json();
+            } catch (error) {
+                this.logger.error(`Falha ao obter bundles de ${node.node}:`, error);
+                throw error;
+            }
+    
+            // 3. Obtém lista de bundles locais
+            const localBundles = fs.existsSync(this.bundlesPath) 
+                ? fs.readdirSync(this.bundlesPath)
+                    .filter(file => file.endsWith('.json'))
+                    .map(file => path.basename(file, '.json'))
+                : [];
+    
+            // 4. Filtra bundles para download
+            const bundlesToDownload = remoteBundles.filter(bundle => 
+                !localBundles.includes(bundle) &&
+                !this.isBundlePending(bundle) // Evita duplicar transferências pendentes
+            );
+    
+            // 5. Processa downloads se necessário
+            if (bundlesToDownload.length > 0) {
+                this.logger.log(`Encontrados ${bundlesToDownload.length} novos bundles em ${node.node}`);
+                await this.downloadBundles(bundlesToDownload, node.ip);
+                
+                // Atualiza estatísticas
+                await this.updateSyncStats(node.node, bundlesToDownload.length);
+            } else {
+                this.logger.debug(`Nenhum novo bundle disponível em ${node.node}`);
+            }
+    
+            this.logger.log(`Sincronização com ${node.node} concluída com sucesso`);
+    
+        } catch (error) {
+            this.logger.error(`Erro durante sincronização com ${node.node}:`, error);
+            throw error;
+        }
+    }
+    
+    // Métodos auxiliares adicionais:
+    
+    // private async getLocalIpAddress(): Promise<string> {
+    //     return new Promise((resolve) => {
+    //         require('dns').lookup(require('os').hostname(), (err, addr) => {
+    //             resolve(err ? '' : addr);
+    //         });
+    //     });
+    // }
+    
+    private isBundlePending(bundleId: string): boolean {
+        try {
+            const pendingTransfers = JSON.parse(fs.readFileSync(this.pendingTransfersFile, 'utf-8'));
+            return pendingTransfers.some((t: any) => t.bundleId === bundleId);
+        } catch {
+            return false;
+        }
+    }
+    
+    private async updateSyncStats(nodeName: string, newBundles: number) {
+        // Implementação para registrar estatísticas de sincronização
+        // Pode ser salvo em um arquivo ou banco de dados
+    }
 
   private async downloadBundles(bundleIds: string[], nodeIp: string) {
     for (const bundleId of bundleIds) {
