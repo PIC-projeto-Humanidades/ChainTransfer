@@ -1,24 +1,58 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { StorageRepository } from "./storage.repositories";
-import { LogsService } from "src/logs/logs.service";
+import { Injectable } from '@nestjs/common';
+import { LogsService } from "../logs/logs.service";
 
 @Injectable()
 export class StorageService {
-    constructor(private readonly storageRepository: StorageRepository, private readonly logsService: LogsService ) {}
+    private readonly storagePath = path.resolve(__dirname, "../../media_data");
 
-    async getFile({ fileName,sessao,node }:{ fileName:string,sessao:string ,node:string }) {
-        let filesHasDownloaded = await this.logsService.getLogsBySession(sessao)
-        let hasFile = filesHasDownloaded.filter((e)=>e.fileName==fileName)
-        if(hasFile.length>0){
-            return ""
-        }
-        
-        return this.storageRepository.getFile(fileName);
+    constructor(private readonly logsService: LogsService) {
+        this.ensureDirectoryExists();
     }
 
-    listFiles() {
-        return this.storageRepository.listFiles();
+    private ensureDirectoryExists() {
+        if (!fs.existsSync(this.storagePath)) {
+            fs.mkdirSync(this.storagePath, { recursive: true });
+        }
+    }
+
+    async saveFile({ filename, buffer, sessionId, node }: { 
+        filename: string, 
+        buffer: Buffer, 
+        sessionId: string,
+        node: string 
+    }) {
+        const filePath = path.join(this.storagePath, filename);
+        fs.writeFileSync(filePath, buffer);
+        
+        await this.logsService.logDownload({
+            fileName: filename,
+            sessao: sessionId,
+            node: node
+        });
+        
+        return filePath;
+    }
+
+    async renameFile(oldName: string, newName: string) {
+        const oldPath = path.join(this.storagePath, oldName);
+        const newPath = path.join(this.storagePath, newName);
+        fs.renameSync(oldPath, newPath);
+        return newPath;
+    }
+
+    async getFileBuffer(filename: string): Promise<Buffer> {
+        const filePath = path.join(this.storagePath, filename);
+        return fs.readFileSync(filePath);
+    }
+
+    async listFiles(): Promise<string[]> {
+        return fs.readdirSync(this.storagePath)
+            .filter(file => fs.lstatSync(path.join(this.storagePath, file)).isFile());
+    }
+
+    async fileExists(filename: string): Promise<boolean> {
+        return fs.existsSync(path.join(this.storagePath, filename));
     }
 }

@@ -1,10 +1,11 @@
 import { Injectable, OnModuleInit, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { NetworkService } from '../network/network.service';
-import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { StorageService } from '../storage/storage.service';
 import fetch from 'node-fetch';
+import { LogsService } from '../logs/logs.service';
+import * as fs from 'fs';
 
 @Injectable()
 export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
@@ -20,6 +21,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   constructor(
     private readonly networkService: NetworkService,
     private readonly storageService: StorageService,
+    private readonly logsService: LogsService,
   ) {}
 
   async onModuleInit() {
@@ -36,7 +38,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   startDTNRoutine() {
     this.logger.log('Iniciando rotina DTN principal (intervalo de 30 segundos)');
     
-    // Limpa qualquer intervalo existente
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
@@ -50,7 +51,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       }
     }, 30000);
 
-    // Executa imediatamente o primeiro ciclo
     this.dtnSyncCycle();
   }
 
@@ -72,7 +72,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async initialFileProcessing() {
     try {
-      const files = fs.readdirSync(this.mediaPath);
+      const files = await this.storageService.listFiles();
       for (const file of files) {
         await this.processFile(file);
       }
@@ -83,7 +83,7 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
 
   private async processNewFiles() {
     try {
-      const files = fs.readdirSync(this.mediaPath);
+      const files = await this.storageService.listFiles();
       for (const file of files) {
         if (!this.processedFiles.has(file)) {
           await this.processFile(file);
@@ -96,9 +96,10 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   }
 
   private async processFile(filename: string) {
-    const filePath = path.join(this.mediaPath, filename);
-    
     try {
+      const filePath = path.join(this.mediaPath, filename);
+      
+      if (!fs.existsSync(filePath)) return;
       if (!fs.lstatSync(filePath).isFile()) return;
 
       const regex = /^(.+)-([a-f0-9\-]+)\.\w+$/;
@@ -107,18 +108,16 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       const fileExt = path.extname(filename);
       const fileName = path.basename(filename, fileExt);
       const newFilename = `${fileName}-${uuidv4()}${fileExt}`;
-      const newFilePath = path.join(this.mediaPath, newFilename);
 
-      fs.renameSync(filePath, newFilePath);
+      // Usa o storageService para renomear o arquivo
+      await this.storageService.renameFile(filename, newFilename);
       this.logger.log(`Arquivo renomeado: ${filename} -> ${newFilename}`);
 
-      // Cria bundle DTN para o novo arquivo
       await this.createBundleFromFile(newFilename);
     } catch (error) {
       this.logger.error(`Erro ao processar arquivo ${filename}:`, error);
     }
-  }
-
+}
   private async createBundleFromFile(filename: string) {
     const bundleId = `bundle-${uuidv4()}`;
     const bundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
@@ -129,7 +128,8 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       originalPath: path.join(this.mediaPath, filename),
       status: 'pending',
       createdAt: new Date().toISOString(),
-      attempts: 0
+      attempts: 0,
+      sessionId: `session-${new Date().getTime()}`
     };
 
     try {
@@ -144,19 +144,15 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     try {
       if (!fs.existsSync(this.mediaPath)) {
         fs.mkdirSync(this.mediaPath, { recursive: true });
-        this.logger.log(`Diretório ${this.mediaPath} criado com sucesso`);
       }
       if (!fs.existsSync(this.dtnStoragePath)) {
         fs.mkdirSync(this.dtnStoragePath, { recursive: true });
-        this.logger.log(`Diretório ${this.dtnStoragePath} criado com sucesso`);
       }
       if (!fs.existsSync(this.bundlesPath)) {
         fs.mkdirSync(this.bundlesPath, { recursive: true });
-        this.logger.log(`Diretório ${this.bundlesPath} criado com sucesso`);
       }
       if (!fs.existsSync(this.pendingTransfersFile)) {
         fs.writeFileSync(this.pendingTransfersFile, JSON.stringify([], null, 2));
-        this.logger.log(`Arquivo ${this.pendingTransfersFile} criado com sucesso`);
       }
     } catch (error) {
       this.logger.error('Erro ao criar diretórios:', error);
@@ -201,7 +197,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
   private async syncWithNode(node: any) {
     this.logger.log(`Sincronizando com nó ${node.node} (${node.ip})`);
     
-    // 1. Obter lista de bundles disponíveis no nó remoto
     let remoteBundles: string[];
     try {
       const response = await fetch(`http://${node.ip}:3000/ndn/bundles`);
@@ -211,12 +206,10 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       return;
     }
 
-    // 2. Obter lista de bundles locais
     const localBundles = fs.readdirSync(this.bundlesPath)
       .filter(file => file.endsWith('.json'))
       .map(file => path.basename(file, '.json'));
 
-    // 3. Determinar bundles para transferência
     const bundlesToDownload = remoteBundles.filter(bundle => !localBundles.includes(bundle));
     
     if (bundlesToDownload.length > 0) {
@@ -234,15 +227,33 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
         if (!response.ok) throw new Error(`Status ${response.status}`);
         
         const bundleData = await response.json();
-        const fileResponse = await fetch(`http://${nodeIp}:3000/ndn/file/${bundleData.filename}`);
         
+        // Verifica se o arquivo já existe
+        const localFiles = await this.storageService.listFiles();
+        if (localFiles.includes(bundleData.filename)) {
+          this.logger.log(`Arquivo ${bundleData.filename} já existe localmente`);
+          continue;
+        }
+
+        const fileResponse = await fetch(`http://${nodeIp}:3000/ndn/file/${bundleData.filename}`);
         if (!fileResponse.ok) throw new Error(`Status ${fileResponse.status}`);
         
         const fileBuffer = await fileResponse.buffer();
-        const filePath = path.join(this.mediaPath, bundleData.filename);
         
-        fs.writeFileSync(filePath, fileBuffer);
-        this.logger.log(`Arquivo ${bundleData.filename} baixado com sucesso`);
+        // Usa o storageService para salvar o arquivo
+        await this.storageService.saveFile({
+          filename: bundleData.filename,
+          buffer: fileBuffer,
+          sessionId: bundleData.sessionId || 'default-session',
+          node: bundleData.node || 'unknown'
+        });
+
+        // Registrar no log de downloads
+        await this.logsService.logDownload({
+          fileName: bundleData.filename,
+          sessao: bundleData.sessionId || 'default-session',
+          node: bundleData.node || 'unknown'
+        });
 
         // Salva o bundle localmente
         const localBundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
@@ -279,7 +290,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
       this.logger.log(`Processando ${pendingTransfers.length} transferências pendentes`);
       
       const updatedPendingTransfers = [];
-      const currentDate = new Date();
 
       for (const transfer of pendingTransfers) {
         try {
@@ -291,7 +301,6 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
             await this.uploadBundle(transfer.bundleId, transfer.nodeIp);
           }
           
-          this.logger.log(`Transferência ${transfer.bundleId} concluída com sucesso`);
         } catch (error) {
           this.logger.error(`Falha na transferência ${transfer.bundleId}:`, error);
           updatedPendingTransfers.push(transfer);
@@ -308,9 +317,9 @@ export class RoutinesService implements OnModuleInit, OnApplicationBootstrap {
     try {
       const bundlePath = path.join(this.bundlesPath, `${bundleId}.json`);
       const bundleData = JSON.parse(fs.readFileSync(bundlePath, 'utf-8'));
-      const filePath = path.join(this.mediaPath, bundleData.filename);
       
-      const fileBuffer = fs.readFileSync(filePath);
+      // Obtém o arquivo usando o storageService
+      const fileBuffer = await this.storageService.getFileBuffer(bundleData.filename);
       
       const response = await fetch(`http://${nodeIp}:3000/ndn/receive-bundle`, {
         method: 'POST',
