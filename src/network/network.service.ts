@@ -6,8 +6,8 @@ import * as ping from 'ping';
 export class NetworkService {
     getNamedDevices() {
         return [
-            { node: "node-A", ip: "192.168.0.2" },
-            { node: "node-B", ip: "192.168.0.2" },
+            { node: "node-A", ip: "192.168.0.33" },
+            { node: "node-B", ip: "192.168.0.15" },
         ];
     }
 

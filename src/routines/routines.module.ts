@@ -1,17 +1,17 @@
-import { NetworkModule } from 'src/network/network.module';
-import { RoutinesService } from './routines.service';
-/*
-https://docs.nestjs.com/modules
-*/
-
+// src/routines/routines.module.ts
 import { Module } from '@nestjs/common';
-import { StorageModule } from 'src/storage/storage.module';
+import { RoutinesService } from './routines.service';
+import { NetworkModule } from '../network/network.module';
+import { StorageModule } from '../storage/storage.module';
+import { LogsModule } from '../logs/logs.module';
 
 @Module({
-    imports: [NetworkModule,StorageModule],
-    controllers: [],
-    providers: [
-        RoutinesService,],
-        exports:[RoutinesService]
+  imports: [
+    NetworkModule,
+    StorageModule,
+    LogsModule,
+  ],
+  providers: [RoutinesService],
+  exports: [RoutinesService],
 })
-export class RoutinesModule { }
+export class RoutinesModule {}
