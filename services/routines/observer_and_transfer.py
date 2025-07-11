@@ -14,8 +14,8 @@ from services.storage_service import StorageService
 from services.download_file import download_file
 
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
-RECEIVER_PATH = MEDIA_PATH / "receiver"
-BUNDLES_LOG = MEDIA_PATH / "bundles_log.json"
+RECEIVER_PATH =  Path(__file__).resolve().parent.parent / "receiver"
+BUNDLES_LOG = Path(__file__).resolve().parent.parent / "bundles_log"
 
 def load_bundles_log():
     if not BUNDLES_LOG.exists():
