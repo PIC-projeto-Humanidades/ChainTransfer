@@ -4,64 +4,55 @@ import * as ping from 'ping';
 
 @Injectable()
 export class NetworkService {
-    getNamedDevices() {
-        return [
-            { node: "node-A", mac: "a4:63:a1:5a:9d:95" },
-            { node: "node-B", mac: "60:03:08:90:8b:1c" },
-        ];
-    }
+  /**
+   * Lista de dispositivos esperados na rede mesh com seus respectivos MACs e nomes simbólicos.
+   */
+  getNamedDevices() {
+    return [
+      { node: 'node-A', mac: 'a4:63:a1:5a:9d:95' }, // máquina A
+      { node: 'node-B', mac: '60:03:08:90:8b:1c' }, // máquina B
+    ];
+  }
 
-    async getConnectedDevices(): Promise<{ ip: string, mac: string, hostname: string }[]> {
-        const baseIp = '192.168.0.'; // ajusta se tua rede for diferente (ex: 192.168.1.x)
+  /**
+   * Retorna todos os dispositivos ativos na rede mesh baseados no comando arp -an,
+   * após realizar ping sweep em 10.0.0.100-199.
+   */
+  async getConnectedDevices(): Promise<{ ip: string; mac: string }[]> {
+    const baseIp = '10.0.0.';
+    const start = 100;
+    const end = 199;
 
-        // Faz ping em todos os IPs da faixa
-        const pingPromises = Array.from({ length: 254 }, (_, i) => i + 1)
-            .map(i => ping.promise.probe(`${baseIp}${i}`, { timeout: 1 }));
+    // Dispara pings para "acordar" dispositivos na rede mesh
+    const pingSweep = Array.from({ length: end - start + 1 }, (_, i) => i + start).map((i) =>
+      ping.promise.probe(`${baseIp}${i}`, { timeout: 1 })
+    );
+    await Promise.all(pingSweep);
 
-        // console.log("Fazendo ping sweep...");
-        await Promise.all(pingPromises);
+    return new Promise((resolve, reject) => {
+      exec('arp -an', (error, stdout) => {
+        if (error) {
+          return reject('Erro ao executar ARP');
+        }
 
-        // Agora que os IPs foram "acordados", rodamos o arp
-        return new Promise((resolve, reject) => {
-            exec("arp -a", async (error, stdout) => {
-                if (error) {
-                    reject("Erro ao obter dispositivos conectados");
-                    return;
-                }
+        const devices = stdout
+          .split('\n')
+          .map((line) => {
+            const ipMatch = line.match(/\(([^)]+)\)/);
+            const macMatch = line.match(/([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}/);
 
-                const deviceList = stdout.split("\n").map(line => {
-                    const ipMatch = line.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
-                    const macMatch = line.match(/([0-9A-Fa-f]{2}[-:][0-9A-Fa-f]{2}[-:][0-9A-Fa-f]{2}[-:][0-9A-Fa-f]{2}[-:][0-9A-Fa-f]{2}[-:][0-9A-Fa-f]{2})/);
+            if (ipMatch && macMatch) {
+              return {
+                ip: ipMatch[1],
+                mac: macMatch[0].toLowerCase(),
+              };
+            }
+            return null;
+          })
+          .filter(Boolean) as { ip: string; mac: string }[];
 
-                    if (ipMatch && macMatch) {
-                        return { ip: ipMatch[0], mac: macMatch[0].toLowerCase(), hostname: "Desconhecido" };
-                    }
-                    return null;
-                }).filter(device => device !== null) as { ip: string, mac: string, hostname: string }[];
-
-                // Resolve os hostnames
-                Promise.all(deviceList.map(async (device) => {
-                    device.hostname = await this.getHostname(device.ip);
-                    return device;
-                })).then(resolve);
-            });
-        });
-    }
-
-    async getHostname(ip: string): Promise<string> {
-        return new Promise((resolve) => {
-            const command = `nslookup ${ip}`;
-            const timeout = setTimeout(() => resolve("Desconhecido"), 3000);
-
-            exec(command, (error, stdout) => {
-                clearTimeout(timeout);
-                if (error || !stdout) {
-                    resolve("Desconhecido");
-                    return;
-                }
-                const match = stdout.split("\n").find(line => line.includes("name ="));
-                resolve(match ? match.split("=")[1].trim() : "Desconhecido");
-            });
-        });
-    }
+        resolve(devices);
+      });
+    });
+  }
 }

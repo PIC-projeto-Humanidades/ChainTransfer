@@ -56,10 +56,10 @@ export class RoutinesService implements OnModuleInit {
     const sessionId = `sessao-${formattedDate}`;
 
     const { node, mac, ip } = foundDevices[0];
-    // console.log("Dispositivo - IP:", ip);
-    // console.log("Dispositivo - MAC:", mac);
-    // console.log("Dispositivo - Node:", node);
-    // console.log("\n");
+    console.log("Dispositivo - IP:", ip);
+    console.log("Dispositivo - MAC:", mac);
+    console.log("Dispositivo - Node:", node);
+    console.log("\n");
 
     let res: any;
     let remoteFiles: string[] = [];

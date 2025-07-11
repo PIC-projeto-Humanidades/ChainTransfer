@@ -9,9 +9,11 @@ import { NdnController } from './ndn/ndn.controller';
 import { Module, OnModuleInit } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { RoutinesService } from './routines/routines.service';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
+    HealthModule,
     RoutinesModule,
     LogsModule,
     MonitoringModule,
