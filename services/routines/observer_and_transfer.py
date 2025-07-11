@@ -15,7 +15,7 @@ from services.download_file import download_file
 
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
 RECEIVER_PATH =  Path(__file__).resolve().parent.parent / "receiver"
-BUNDLES_LOG = Path(__file__).resolve().parent.parent / "bundles_log"
+BUNDLES_LOG = Path(__file__).resolve().parent.parent / "logs" / "bundles_log.json"
 
 def load_bundles_log():
     if not BUNDLES_LOG.exists():
