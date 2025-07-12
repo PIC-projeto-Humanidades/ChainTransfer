@@ -3,29 +3,38 @@
 : '
 🧹 Script: desfazer_mesh.sh
 🧠 Propósito:
-  Desativa a rede mesh e restaura o estado da interface Wi-Fi.
+  Remove interface mesh criada via 802.11s (modo MP) e restaura interface Wi-Fi ao modo gerenciado.
 
 📋 Requisitos:
-  - Pacotes: wireless-tools, net-tools
+  - Pacotes: iw, iproute2
 '
 
-# Detecta interface Wi-Fi automaticamente
-INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
+# Detecta interfaces mesh criadas
+MESH_IFACE=$(iw dev | awk '/Interface/ {print $2}' | grep '^mesh' | head -n1)
+BASE_IFACE=$(iw dev | awk '/Interface/ {print $2}' | grep -v '^mesh' | head -n1)
 
-if [ -z "$INTERFACE" ]; then
+if [ -z "$BASE_IFACE" ]; then
   echo "❌ Nenhuma interface Wi-Fi detectada."
   exit 1
 fi
 
-echo "🛑 Desfazendo configuração da interface $INTERFACE..."
+echo "🛑 Desfazendo configuração da interface mesh..."
 
-# Tenta restaurar o estado anterior
-sudo ip addr flush dev "$INTERFACE"
-sudo ip link set "$INTERFACE" down
-sudo iwconfig "$INTERFACE" mode managed
-sudo ip link set "$INTERFACE" up
+# Remove interface mesh, se existir
+if [ -n "$MESH_IFACE" ]; then
+  echo "➖ Removendo interface mesh $MESH_IFACE..."
+  sudo ip link set "$MESH_IFACE" down
+  sudo iw dev "$MESH_IFACE" del
+fi
+
+# Restaura interface principal
+echo "🔁 Restaurando $BASE_IFACE ao modo gerenciado..."
+sudo ip addr flush dev "$BASE_IFACE"
+sudo ip link set "$BASE_IFACE" down
+sudo iwconfig "$BASE_IFACE" mode managed
+sudo ip link set "$BASE_IFACE" up
 
 # Reativa o NetworkManager (opcional)
 sudo systemctl start NetworkManager >/dev/null 2>&1 || true
 
-echo "✅ Interface $INTERFACE restaurada ao modo gerenciado."
+echo "✅ Interface $BASE_IFACE restaurada ao modo gerenciado."

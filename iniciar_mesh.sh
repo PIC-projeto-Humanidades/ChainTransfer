@@ -2,17 +2,16 @@
 
 : '
 📡 Script: iniciar_mesh.sh
-🧠 Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) em Linux, atribuindo IP manual ou com base no MAC.
+🧠 Inicia uma rede mesh Wi-Fi usando 802.11s (modo Mesh Point "mp") em Linux.
 
 📋 Requisitos:
-  - Interface Wi-Fi compatível com modo Ad-Hoc
-  - Pacotes: wireless-tools, iw, net-tools
+  - Placa Wi-Fi compatível com 802.11s (ex: ath9k, ath10k)
+  - Pacotes: iw, iproute2, wireless-tools (opcional), jq (para ler IP do JSON)
 '
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
-CELL="02:CA:FE:BA:BE:01"  # ID fixo da célula (todos os nós devem ter o mesmo!)
-PACOTES=("wireless-tools" "iw" "net-tools")
+PACOTES=("iw" "iproute2" "jq")
 BASE="10.0.0"
 IP_FIXO=""
 CONFIG_PATH="$(dirname "$(realpath "$0")")/network_config.json"
@@ -42,24 +41,6 @@ detectar_interface() {
   echo "🔍 Interface Wi-Fi detectada: $INTERFACE"
 }
 
-verificar_ibss() {
-  if ! iw list | grep -q "IBSS"; then
-    echo "❌ A interface $INTERFACE não suporta modo Ad-Hoc (IBSS)."
-    exit 1
-  fi
-}
-
-gerar_ip() {
-  if [ -n "$IP_FIXO" ]; then
-    echo "$IP_FIXO"
-  else
-    MAC=$(cat /sys/class/net/"$INTERFACE"/address)
-    HASH=$(echo "$MAC" | md5sum | cut -c1-2)
-    NUM=$(( 0x$HASH % 100 + 100 ))
-    echo "${BASE}.${NUM}"
-  fi
-}
-
 carregar_ip_do_json() {
   if [ -f "$CONFIG_PATH" ]; then
     IP_JSON=$(jq -r '.meu_ip' "$CONFIG_PATH")
@@ -74,33 +55,45 @@ carregar_ip_do_json() {
   fi
 }
 
+gerar_ip() {
+  if [ -n "$IP_FIXO" ]; then
+    echo "$IP_FIXO"
+  else
+    MAC=$(cat /sys/class/net/"$INTERFACE"/address)
+    HASH=$(echo "$MAC" | md5sum | cut -c1-2)
+    NUM=$(( 0x$HASH % 100 + 100 ))
+    echo "${BASE}.${NUM}"
+  fi
+}
+
 iniciar_mesh() {
+  MESH_IFACE="mesh0"
   IP=$(gerar_ip)
-  echo "🔑 IP atribuído: $IP"
 
   echo "📴 Desativando NetworkManager e limpando interface $INTERFACE..."
   sudo systemctl stop NetworkManager &>/dev/null || true
   sudo nmcli dev disconnect "$INTERFACE" &>/dev/null || true
-  sudo ip addr flush dev "$INTERFACE"
   sudo ip link set "$INTERFACE" down
 
-  echo "🔧 Configurando $INTERFACE para rede Mesh ($SSID)..."
-  sudo iwconfig "$INTERFACE" mode ad-hoc
-  sudo iwconfig "$INTERFACE" essid "$SSID"
-  sudo iwconfig "$INTERFACE" channel "$CHANNEL"
-  sudo iwconfig "$INTERFACE" ap "$CELL"
-  sudo ip link set "$INTERFACE" up
-  sudo iwconfig "$INTERFACE" power off
-  sudo ip addr add "$IP/24" dev "$INTERFACE"
+  echo "🧼 Removendo interfaces mesh antigas (se houver)..."
+  sudo iw dev "$MESH_IFACE" del &>/dev/null || true
 
-  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP e Cell $CELL"
+  echo "➕ Criando interface $MESH_IFACE em modo mesh (802.11s)..."
+  sudo iw dev "$INTERFACE" interface add "$MESH_IFACE" type mp
+  sudo ip link set "$MESH_IFACE" down
+  sudo iw dev "$MESH_IFACE" set channel "$CHANNEL"
+  sudo iw dev "$MESH_IFACE" mesh join "$SSID"
+  sudo ip link set "$MESH_IFACE" up
+  sudo ip addr add "$IP/24" dev "$MESH_IFACE"
+
+  echo "✅ Mesh 802.11s ativa na interface $MESH_IFACE com IP $IP"
 
   echo ""
-  echo "📊 Estado da interface $INTERFACE:"
-  iwconfig "$INTERFACE" | grep -E "ESSID|Mode|Frequency|Cell"
+  echo "📊 Estado da interface $MESH_IFACE:"
+  iw dev "$MESH_IFACE" info | grep -E "interface|type|ssid|channel"
   echo ""
   echo "🌐 IP atual:"
-  ip addr show "$INTERFACE" | grep 'inet ' | awk '{print $2}'
+  ip addr show "$MESH_IFACE" | grep 'inet ' | awk '{print $2}'
   echo ""
 }
 
@@ -108,5 +101,4 @@ iniciar_mesh() {
 verificar_pacotes
 carregar_ip_do_json
 detectar_interface
-verificar_ibss
 iniciar_mesh
