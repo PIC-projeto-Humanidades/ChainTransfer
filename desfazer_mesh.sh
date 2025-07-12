@@ -1,32 +1,31 @@
 #!/bin/bash
-set -euo pipefail
 
 : '
 🧹 Script: desfazer_mesh.sh
-🧠 Restaura a interface Wi-Fi e limpa Batman-adv
+🧠 Propósito:
+  Desativa a rede mesh e restaura o estado da interface Wi-Fi.
+
+📋 Requisitos:
+  - Pacotes: wireless-tools, net-tools
 '
 
-# Detecta interface física
-PHY=$(iw dev | awk '$1=="Interface"{print $2}' | grep -Ev '^(bat|mesh)' | head -n1)
-[[ -n "$PHY" ]] || { echo "❌ Sem interface Wi-Fi"; exit 1; }
+# Detecta interface Wi-Fi automaticamente
+INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
 
-# Tira IP e modo IBSS
-ip addr flush dev "$PHY"
-ip link set "$PHY" down
-iwconfig "$PHY" mode managed
-ip link set "$PHY" up
+if [ -z "$INTERFACE" ]; then
+  echo "❌ Nenhuma interface Wi-Fi detectada."
+  exit 1
+fi
 
-# Remove bat0
-ip link show bat0 &>/dev/null && {
-  batctl if del "$PHY" || true
-  ip link set down dev bat0
-  ip link delete bat0
-}
+echo "🛑 Desfazendo configuração da interface $INTERFACE..."
 
-# Descarrega módulo
-lsmod | grep -q batman_adv && modprobe -r batman_adv
+# Tenta restaurar o estado anterior
+sudo ip addr flush dev "$INTERFACE"
+sudo ip link set "$INTERFACE" down
+sudo iwconfig "$INTERFACE" mode managed
+sudo ip link set "$INTERFACE" up
 
-# Restaura NetworkManager
-systemctl start NetworkManager &>/dev/null || true
+# Reativa o NetworkManager (opcional)
+sudo systemctl start NetworkManager >/dev/null 2>&1 || true
 
-echo "✅ $PHY restaurada ao modo gerenciado."
+echo "✅ Interface $INTERFACE restaurada ao modo gerenciado."

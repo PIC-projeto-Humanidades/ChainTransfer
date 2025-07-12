@@ -1,90 +1,93 @@
 #!/bin/bash
-set -euo pipefail
 
 : '
-📡 Script: iniciar_mesh_batman.sh
-🧠 Cria uma rede mesh usando Batman-adv sobre um enlace IBSS mínimo
-'
+📡 Script: iniciar_mesh.sh
+🧠 Propósito:
+  Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) em Linux, atribuindo IP manual ou exclusivo por MAC.
 
-# 1) Checa root
-(( EUID == 0 )) || { echo "❌ Rode como root"; exit 1; }
+📋 Requisitos:
+  - Interface Wi-Fi compatível com modo Ad-Hoc (IBSS)
+  - Pacotes: wireless-tools, iw, net-tools, jq
+
+⚙️ Configurações:
+  - CONFIG_FILE: caminho para o JSON com a definição de IP
+'
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
-BASE_IP="10.0.0"
-CONFIG_PATH="$(dirname "$(realpath "$0")")/network_config.json"
-PACOTES=("batctl" "wireless-tools" "iw" "iproute2" "jq")
+CONFIG_FILE="/network_config.json"
+PACOTES=("wireless-tools" "iw" "net-tools" "jq")
 
-install_pkgs() {
-  local miss=()
-  for p in "${PACOTES[@]}"; do
-    dpkg -s "$p" &>/dev/null || miss+=("$p")
+verificar_pacotes() {
+  FALTANDO=()
+  for pacote in "${PACOTES[@]}"; do
+    if ! dpkg -s "$pacote" >/dev/null 2>&1; then
+      FALTANDO+=("$pacote")
+    fi
   done
-  (( ${#miss[@]} )) && apt update && apt install -y "${miss[@]}"
+  if [ ${#FALTANDO[@]} -gt 0 ]; then
+    echo "📦 Instalando pacotes ausentes: ${FALTANDO[*]}"
+    sudo apt update
+    sudo apt install -y "${FALTANDO[@]}"
+  else
+    echo "✅ Todos os pacotes necessários estão instalados."
+  fi
 }
 
-detect_iface() {
-  IFACE=$(iw dev | awk '$1=="Interface"{print $2}' | grep -Ev '^(bat|mesh)' | head -n1)
-  [[ -n "$IFACE" ]] || { echo "❌ Sem interface Wi-Fi"; exit 1; }
+detectar_interface() {
+  INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
+  if [ -z "$INTERFACE" ]; then
+    echo "❌ Nenhuma interface Wi-Fi detectada."
+    exit 1
+  fi
+  echo "🔍 Interface Wi-Fi detectada: $INTERFACE"
 }
 
-load_ip() {
-  IP_FIXED=""
-  [[ -f "$CONFIG_PATH" ]] && IP_FIXED=$(jq -r '.meu_ip // empty' "$CONFIG_PATH")
+verificar_ibss() {
+  if ! iw list | grep -q "IBSS"; then
+    echo "❌ A interface $INTERFACE não suporta modo Ad-Hoc (IBSS)."
+    exit 1
+  fi
 }
 
-gen_ip() {
-  [[ -n "$IP_FIXED" ]] && echo "$IP_FIXED" && return
-  local mac h num
-  mac=$(cat /sys/class/net/"$IFACE"/address)
-  h=$(echo "$mac" | md5sum | cut -c1-2)
-  num=$((0x$h % 100 + 100))
-  echo "${BASE_IP}.${num}"
+# Lê o IP fixo do JSON; se falhar, sai com erro
+gerar_ip() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "❌ Arquivo de configuração $CONFIG_FILE não encontrado."
+    exit 1
+  fi
+
+  IP=$(jq -r '.meu_ip // empty' "$CONFIG_FILE")
+  if [[ -z "$IP" || "$IP" == "null" ]]; then
+    echo "❌ Campo 'meu_ip' não definido em $CONFIG_FILE."
+    exit 1
+  fi
+
+  echo "$IP"
 }
 
-setup_ibss() {
-  echo "📴 Desconectando $IFACE do NM…"
-  nmcli dev disconnect "$IFACE" &>/dev/null || true
-  echo "📴 Parando NetworkManager…"
-  systemctl stop NetworkManager &>/dev/null || true
+iniciar_mesh() {
+  IP=$(gerar_ip)
+  echo "🔑 IP atribuído: $IP"
 
-  echo "📴 Limpando $IFACE (IP e status)…"
-  ip addr flush dev "$IFACE"
-  ip link set "$IFACE" down
+  echo "📴 Liberando interface $INTERFACE de conexões ativas..."
+  nmcli dev disconnect "$INTERFACE" >/dev/null 2>&1 || true
+  sudo systemctl stop NetworkManager >/dev/null 2>&1 || true
+  sudo ip addr flush dev "$INTERFACE"
+  sudo ip link set "$INTERFACE" down
 
-  echo "🔧 Configurando IBSS: SSID=$SSID, canal=$CHANNEL"
-  iwconfig "$IFACE" mode ad-hoc
-  iwconfig "$IFACE" essid "$SSID"
-  iwconfig "$IFACE" channel "$CHANNEL"
-  ip link set "$IFACE" up
+  echo "🔧 Configurando $INTERFACE como mesh ($SSID)..."
+  sudo iwconfig "$INTERFACE" mode ad-hoc
+  sudo iwconfig "$INTERFACE" essid "$SSID"
+  sudo iwconfig "$INTERFACE" channel "$CHANNEL"
+  sudo ip link set "$INTERFACE" up
+  sudo ip addr add "$IP"/24 dev "$INTERFACE"
+
+  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP"
 }
 
-cleanup_bat0() {
-  ip link show bat0 &>/dev/null && {
-    batctl if del "$IFACE" || true
-    ip link set down dev bat0 || true
-    ip link delete bat0 || true
-  }
-}
-
-start_batman() {
-  modprobe batman_adv
-  batctl if add "$IFACE"
-  ip link set up dev bat0
-  local ip; ip=$(gen_ip)
-  ip addr add "$ip/24" dev bat0 || true
-}
-
-show_peers() {
-  batctl o
-}
-
-install_pkgs
-detect_iface
-load_ip
-setup_ibss
-cleanup_bat0
-start_batman
-show_peers
-
-echo "✅ bat0 up with IP: $(ip -4 addr show bat0 | grep inet)"
+# Execução principal
+verificar_pacotes
+detectar_interface
+verificar_ibss
+iniciar_mesh
