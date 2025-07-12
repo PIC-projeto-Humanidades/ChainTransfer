@@ -11,6 +11,7 @@
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
+CELL="02:CA:FE:BA:BE:01"  # ID fixo da célula (todos os nós devem ter o mesmo!)
 PACOTES=("wireless-tools" "iw" "net-tools")
 BASE="10.0.0"
 IP_FIXO=""
@@ -87,10 +88,20 @@ iniciar_mesh() {
   sudo iwconfig "$INTERFACE" mode ad-hoc
   sudo iwconfig "$INTERFACE" essid "$SSID"
   sudo iwconfig "$INTERFACE" channel "$CHANNEL"
+  sudo iwconfig "$INTERFACE" ap "$CELL"
   sudo ip link set "$INTERFACE" up
+  sudo iwconfig "$INTERFACE" power off
   sudo ip addr add "$IP/24" dev "$INTERFACE"
 
-  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP"
+  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP e Cell $CELL"
+
+  echo ""
+  echo "📊 Estado da interface $INTERFACE:"
+  iwconfig "$INTERFACE" | grep -E "ESSID|Mode|Frequency|Cell"
+  echo ""
+  echo "🌐 IP atual:"
+  ip addr show "$INTERFACE" | grep 'inet ' | awk '{print $2}'
+  echo ""
 }
 
 # Execução principal
