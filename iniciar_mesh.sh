@@ -3,33 +3,29 @@
 : '
 📡 Script: iniciar_mesh.sh
 🧠 Propósito:
-  Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) em Linux, atribuindo IP manual ou exclusivo por MAC.
+  Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) com IP fixo ou baseado no MAC.
 
 📋 Requisitos:
-  - Interface Wi-Fi compatível com modo Ad-Hoc (IBSS)
+  - Interface compatível com modo Ad-Hoc (IBSS)
   - Pacotes: wireless-tools, iw, net-tools
-
-⚙️ Configurações:
-  - IP_FIXO: deixe vazio para gerar IP automaticamente com base no MAC
 '
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
-PACOTES=("wireless-tools" "iw" "net-tools")
+CELL_ID="02:CA:FE:BA:BE:01"  # ID comum a todos
 BASE="10.0.0"
-IP_FIXO="10.0.0.102"  # Exemplo: "10.0.0.123"
+PACOTES=("wireless-tools" "iw" "net-tools")
+CONFIG_PATH="$(dirname "$(realpath "$0")")/network_config.json"
+IP_FIXO=""
 
 verificar_pacotes() {
   FALTANDO=()
-  for pacote in "${PACOTES[@]}"; do
-    if ! dpkg -s "$pacote" >/dev/null 2>&1; then
-      FALTANDO+=("$pacote")
-    fi
+  for p in "${PACOTES[@]}"; do
+    dpkg -s "$p" &>/dev/null || FALTANDO+=("$p")
   done
   if [ ${#FALTANDO[@]} -gt 0 ]; then
-    echo "📦 Instalando pacotes ausentes: ${FALTANDO[*]}"
-    sudo apt update
-    sudo apt install -y "${FALTANDO[@]}"
+    echo "📦 Instalando: ${FALTANDO[*]}"
+    sudo apt update && sudo apt install -y "${FALTANDO[@]}"
   else
     echo "✅ Todos os pacotes necessários estão instalados."
   fi
@@ -41,13 +37,21 @@ detectar_interface() {
     echo "❌ Nenhuma interface Wi-Fi detectada."
     exit 1
   fi
-  echo "🔍 Interface Wi-Fi detectada: $INTERFACE"
+  echo "🔍 Interface detectada: $INTERFACE"
 }
 
 verificar_ibss() {
-  if ! iw list | grep -q "IBSS"; then
-    echo "❌ A interface $INTERFACE não suporta modo Ad-Hoc (IBSS)."
+  iw list | grep -q "IBSS" || {
+    echo "❌ Interface não suporta modo IBSS (Ad-Hoc)"
     exit 1
+  }
+}
+
+carregar_ip_do_json() {
+  if [ -f "$CONFIG_PATH" ]; then
+    IP_JSON=$(jq -r '.meu_ip' "$CONFIG_PATH")
+    [ "$IP_JSON" != "null" ] && IP_FIXO="$IP_JSON"
+    echo "📡 IP do JSON: $IP_FIXO"
   fi
 }
 
@@ -57,7 +61,7 @@ gerar_ip() {
   else
     MAC=$(cat /sys/class/net/"$INTERFACE"/address)
     HASH=$(echo "$MAC" | md5sum | cut -c1-2)
-    NUM=$(( 0x$HASH % 100 + 100 ))  # IP entre 100 e 199
+    NUM=$(( 0x$HASH % 100 + 100 ))
     echo "${BASE}.${NUM}"
   fi
 }
@@ -66,24 +70,33 @@ iniciar_mesh() {
   IP=$(gerar_ip)
   echo "🔑 IP atribuído: $IP"
 
-  echo "📴 Liberando interface $INTERFACE de conexões ativas..."
-  nmcli dev disconnect "$INTERFACE" >/dev/null 2>&1 || true
-  sudo systemctl stop NetworkManager >/dev/null 2>&1 || true
-  sudo ip addr flush dev $INTERFACE
-  sudo ip link set $INTERFACE down
+  echo "📴 Limpando $INTERFACE..."
+  sudo nmcli dev disconnect "$INTERFACE" &>/dev/null || true
+  sudo systemctl stop NetworkManager &>/dev/null || true
+  sudo ip addr flush dev "$INTERFACE"
+  sudo ip link set "$INTERFACE" down
 
-  echo "🔧 Configurando $INTERFACE como mesh ($SSID)..."
-  sudo iwconfig $INTERFACE mode ad-hoc
-  sudo iwconfig $INTERFACE essid "$SSID"
-  sudo iwconfig $INTERFACE channel "$CHANNEL"
-  sudo ip link set $INTERFACE up
-  sudo ip addr add $IP/24 dev $INTERFACE
+  echo "🔧 Configurando $INTERFACE para Ad-Hoc Mesh..."
+  sudo iwconfig "$INTERFACE" mode ad-hoc
+  sudo iwconfig "$INTERFACE" essid "$SSID"
+  sudo iwconfig "$INTERFACE" channel "$CHANNEL"
+  sudo iwconfig "$INTERFACE" ap "$CELL_ID"
+  sudo iwconfig "$INTERFACE" power off &>/dev/null || true
+  sudo ip link set "$INTERFACE" up
+  sudo ip addr add "$IP/24" dev "$INTERFACE"
 
-  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP"
+  echo "✅ Mesh IBSS ativa em $INTERFACE com IP $IP e Cell $CELL_ID"
+  echo ""
+  echo "📊 iwconfig:"
+  iwconfig "$INTERFACE" | grep -E "ESSID|Mode|Freq|Cell"
+  echo ""
+  echo "🌐 IP atual:"
+  ip addr show "$INTERFACE" | grep 'inet ' | awk '{print $2}'
 }
 
-# Execução principal
+# Execução
 verificar_pacotes
+carregar_ip_do_json
 detectar_interface
 verificar_ibss
 iniciar_mesh
