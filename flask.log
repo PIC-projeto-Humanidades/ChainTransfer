@@ -1,6 +1,0 @@
- * Serving Flask app 'app'
-👁️ Observando a pasta media_data para novos arquivos...
- * Debug mode: on
-Address already in use
-Port 3000 is in use by another program. Either identify and stop that program, or start the server with a different port.
-⏳ Iniciando rotina recorrente a cada 5 segundos...
