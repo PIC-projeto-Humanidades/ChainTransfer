@@ -1,5 +1,3 @@
-# app.py ou routines.py
-
 from pathlib import Path
 import os
 import time
@@ -8,25 +6,22 @@ import threading
 import json
 import uuid
 
-from services.network_service import routes
-from utils.ping import ping
-from services.storage_service import StorageService
-from services.download_file import download_file
+# Importa serviços e repositórios do sistema
+from services.network_service import routes,meu_ip           # Lista de nós conhecidos da rede, meu ip
+from utils.ping import ping                                  # Função para verificar se um IP está ativo
+from utils.hash_do_ip import hash_do_ip                      # Função para hashear o IP está ativo
+from services.storage_service import StorageService          # Serviço para manipular arquivos locais
+from services.download_file import download_file             # Função para fazer o download de arquivos
+from repository.bundle_repository import BundleRepository    # Repositório para manipular bundles recebidos
+from repository.files_receiver_repository import FilesReceiverRepository  # Repositório de arquivos baixados
 
+# Caminho para a pasta onde os arquivos locais serão monitorados
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
-RECEIVER_PATH =  Path(__file__).resolve().parent.parent / "receiver"
-BUNDLES_LOG = Path(__file__).resolve().parent.parent / "logs" / "bundles_log.json"
 
-def load_bundles_log():
-    if not BUNDLES_LOG.exists():
-        return {}
-    with open(BUNDLES_LOG, "r") as f:
-        return json.load(f)
+# Caminho para a pasta onde os arquivos recebidos serão armazenados
+RECEIVER_PATH = Path(__file__).resolve().parent.parent / "receiver"
 
-def save_bundles_log(data):
-    with open(BUNDLES_LOG, "w") as f:
-        json.dump(data, f, indent=2)
-
+# Verifica se um texto é um UUID válido (para identificação de arquivos)
 def is_valid_uuid(text):
     try:
         uuid.UUID(text)
@@ -34,16 +29,21 @@ def is_valid_uuid(text):
     except ValueError:
         return False
 
+# 🧠 Thread 1: Observa a pasta `media_data` e renomeia arquivos automaticamente com UUID
 def observe_and_rename():
     print("👁️ Observando a pasta media_data para novos arquivos...")
     MEDIA_PATH.mkdir(parents=True, exist_ok=True)
+
+    # Mantém uma lista de arquivos já vistos
     seen = set(f.name for f in MEDIA_PATH.iterdir() if f.is_file())
 
     while True:
-        time.sleep(1)
+        time.sleep(5)  # Checa a cada 5 segundos
         for file in MEDIA_PATH.iterdir():
             if file.is_file() and file.name not in seen:
                 seen.add(file.name)
+
+                # Se o arquivo não contém um UUID no nome, renomeia com um novo
                 if '-' not in file.stem or not is_valid_uuid(file.stem.split('-')[-1]):
                     new_name = f"{file.stem}-{uuid.uuid4()}{file.suffix}"
                     new_path = MEDIA_PATH / new_name
@@ -52,81 +52,93 @@ def observe_and_rename():
                     seen.add(new_name)
                     print(f"📝 Arquivo renomeado: {file.name} → {new_name}")
 
+# 🔁 Thread 2: Rotina que busca bundles nos nós da rede e faz o download dos arquivos
 def routine():
     storage_service = StorageService(media_path=RECEIVER_PATH)
-    print("⏳ Iniciando rotina recorrente a cada 2 segundos...")
+    instance_BundleRepository = BundleRepository()
+    instance_FilesReceiverRepository = FilesReceiverRepository()
+    print("⏳ Iniciando rotina recorrente a cada 5 segundos...")
 
     while True:
         time.sleep(5)
-        print("Procurando ...")
+        print("🔍 Procurando bundles em nós ativos...")
+
         for node in routes():
             ip = node["ip"]
+
+            # Verifica se o nó está ativo via ping
             if not ping(ip):
-                # print(f"❌ {ip} inativo.")
                 continue
 
             print(f"📡 Dispositivo ativo - IP: {ip}, Node: {node['node']}")
             try:
-                res = requests.get(f"http://{ip}:3000/bundle", timeout=5)
+                meu_ip_network = meu_ip()
+                hash_secondary = hash_do_ip(meu_ip_network)
+                # Solicita o bundle ao nó remoto
+                res = requests.get(f"http://{ip}:3000/bundle/{hash_secondary}", timeout=5)
                 bundle = res.json()
                 bundle_hash = bundle.get("hash")
-                files = bundle.get("file_names", [])
-                session = bundle.get("session")
-                source_node = bundle.get("source_node")
-                bundle_id = f"{bundle_hash}"
+                files = bundle.get("bundle", [])
 
-                bundles_log = load_bundles_log()
-                if bundle_id in bundles_log and bundles_log[bundle_id].get("status") == "concluido":
-                    print(f"✅ Bundle {bundle_id} já concluído.")
+                # Verifica se o bundle recebido é válido
+                if not bundle_hash or not isinstance(files, list):
+                    print("⚠️ Bundle inválido recebido, ignorando.")
                     continue
 
-                if bundle_id not in bundles_log:
-                    bundles_log[bundle_id] = {
-                        "session": session,
-                        "source_node": source_node,
-                        "arquivos": {},
-                        "status": "incompleto"
+                # Verifica se já temos esse bundle no banco
+                resultSearch = instance_BundleRepository.find_one_receiver(bundle_hash)
+                if resultSearch:
+                    if resultSearch["status"]:
+                        print(f"✅ Bundle {bundle_hash} já concluído.")
+                        continue  # Nada a fazer
+                    else:
+                        print(f"ℹ️ Bundle {bundle_hash} ainda não concluído.")
+                        bundleDatabase = resultSearch
+                else:
+                    # Novo bundle, insere no banco como não concluído
+                    print(f"📦 Novo bundle recebido: {bundle_hash}")
+                    instance_BundleRepository.insert_bundle_receiver(bundle_hash, files, False)
+                    bundleDatabase = {
+                        "hash": bundle_hash,
+                        "bundle": files,
+                        "status": False
                     }
 
-                for file in files:
-                    if bundles_log[bundle_id]["arquivos"].get(file) == "ok":
-                        continue
+                # Filtra apenas os arquivos ainda não baixados
+                listaFiltrada_arquivos = []
+                for file_name in bundleDatabase["bundle"]:
+                    resultado = instance_FilesReceiverRepository.find_by_file_name(file_name)
+                    if not resultado:
+                        listaFiltrada_arquivos.append(file_name)
 
-                    success = download_file(ip, file, session, source_node)
-                    if success:
-                        bundles_log[bundle_id]["arquivos"][file] = "ok"
-                        print(f"📥 {file} baixado.")
+                # Faz o download dos arquivos pendentes
+                for file_name in listaFiltrada_arquivos:
+                    resultDownload = download_file(ip, file_name)
+                    if resultDownload:
+                        instance_FilesReceiverRepository.insert_file(bundle_hash, file_name)
+                        print(f"📥 Download do arquivo {file_name} feito com sucesso.")
                     else:
-                        print(f"⚠️ Erro em {file}. Re-tentando...")
-                        retry = download_file(ip, file, session, source_node)
-                        if retry:
-                            bundles_log[bundle_id]["arquivos"][file] = "ok"
-                            print(f"✅ {file} baixado na segunda tentativa.")
-                        else:
-                            print(f"❌ Falha em definitivo: {file}.")
+                        print(f"❌ Falha ao realizar o download do arquivo {file_name}.")
 
-                if all(bundles_log[bundle_id]["arquivos"].get(f) == "ok" for f in files):
-                    bundles_log[bundle_id]["status"] = "concluido"
-                    print(f"🎉 Bundle {bundle_id} completo.")
+                # Verifica se todos os arquivos foram baixados
+                finally_files = instance_FilesReceiverRepository.find_by_hash(bundle_hash)
+                arquivos_esperados = bundleDatabase["bundle"]
+                arquivos_baixados = [row["file_name"] for row in finally_files]
+                todos_baixados = all(nome in arquivos_baixados for nome in arquivos_esperados)
 
-                    try:
-                        feedback = {
-                            "hash": bundle_hash,
-                            "session": session,
-                            "destination_node": node["node"],
-                            "status": "ok"
-                        }
-                        fb_res = requests.post(f"http://{ip}:3000/monitoring/feedback", json=feedback, timeout=5)
-                        if fb_res.status_code in [200, 201]:
-                            print("📬 Feedback enviado.")
-                    except Exception as e:
-                        print(f"⚠️ Erro no feedback: {e}")
-
-                save_bundles_log(bundles_log)
+                # Atualiza status se tudo estiver completo
+                if todos_baixados:
+                    print(f"✅ Todos os arquivos do bundle {bundle_hash} foram baixados.")
+                    instance_BundleRepository.update_status_receiver(bundle_hash, True)
+                else:
+                    faltando = [nome for nome in arquivos_esperados if nome not in arquivos_baixados]
+                    print(f"⚠️ Ainda faltam arquivos para o bundle {bundle_hash}: {faltando}")
 
             except Exception as e:
-                print(f"❌ Erro ao conectar ao {ip}: {e}")
+                print(f"❌ Erro ao processar o nó {ip}: {e}")
 
-# Inicia observadores
+# 🔁 Inicia duas threads paralelas:
+# - Uma para observar novos arquivos locais
+# - Outra para buscar e baixar arquivos de outros nós
 threading.Thread(target=observe_and_rename, daemon=True).start()
 threading.Thread(target=routine, daemon=True).start()
