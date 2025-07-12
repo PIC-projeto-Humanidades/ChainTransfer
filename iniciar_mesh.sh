@@ -3,94 +3,101 @@
 : '
 📡 Script: iniciar_mesh.sh
 🧠 Propósito:
-  Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) em Linux, atribuindo IP manual ou exclusivo por MAC.
-
-📋 Requisitos:
-  - Interface Wi-Fi compatível com modo Ad-Hoc (IBSS)
-  - Pacotes: wireless-tools, iw, net-tools, jq
-
-⚙️ Configurações:
-  - CONFIG_FILE: caminho para o JSON com a definição de IP (sempre ao lado do script)
+  Inicia uma rede mesh Wi-Fi (modo Ad-Hoc/IBSS) em Linux,
+  atribuindo o IP fixo definido em network_config.json.
+  Logs de debug vão para stderr; stdout só retorna o IP.
 '
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
 
-# Detecta o diretório onde o script está e usa para encontrar o JSON
+# Detecta o diretório onde o script está
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/network_config.json"
 
-PACOTES=("wireless-tools" "iw" "net-tools" "jq")
+# Pacotes necessários (batctl traz o módulo batman_adv)
+PACOTES=("wireless-tools" "iw" "net-tools" "jq" "batctl")
+
+# Função de log -> stderr
+log() { echo -e "[$(date '+%H:%M:%S')] $*" >&2; }
 
 verificar_pacotes() {
-  FALTANDO=()
-  for pacote in "${PACOTES[@]}"; do
-    if ! dpkg -s "$pacote" >/dev/null 2>&1; then
-      FALTANDO+=("$pacote")
+  local missing=()
+  for pkg in "${PACOTES[@]}"; do
+    if ! dpkg -s "$pkg" &>/dev/null; then
+      missing+=("$pkg")
     fi
   done
-  if [ ${#FALTANDO[@]} -gt 0 ]; then
-    echo "📦 Instalando pacotes ausentes: ${FALTANDO[*]}"
+  if [ ${#missing[@]} -gt 0 ]; then
+    log "📦 Instalando: ${missing[*]}"
     sudo apt update
-    sudo apt install -y "${FALTANDO[@]}"
+    sudo apt install -y "${missing[@]}"
   else
-    echo "✅ Todos os pacotes necessários estão instalados."
+    log "✅ Pacotes OK"
   fi
 }
 
 detectar_interface() {
   INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
-  if [ -z "$INTERFACE" ]; then
-    echo "❌ Nenhuma interface Wi-Fi detectada."
-    exit 1
-  fi
-  echo "🔍 Interface Wi-Fi detectada: $INTERFACE"
+  [ -z "$INTERFACE" ] && { log "❌ Sem interface Wi-Fi"; exit 1; }
+  log "🔍 Wi-Fi: $INTERFACE"
 }
 
 verificar_ibss() {
-  if ! iw list | grep -q "IBSS"; then
-    echo "❌ A interface $INTERFACE não suporta modo Ad-Hoc (IBSS)."
-    exit 1
-  fi
+  iw list | grep -q "IBSS" || { log "❌ IBSS não suportado"; exit 1; }
 }
 
-# Lê o IP fixo do JSON; se falhar, sai com erro
+# Lê somente o IP (stdout) e envia debug para stderr
 gerar_ip() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "❌ Arquivo de configuração $CONFIG_FILE não encontrado."
-    exit 1
-  fi
+  log "🔎 CONFIG_FILE = $CONFIG_FILE"
+  [ ! -f "$CONFIG_FILE" ] && { log "❌ Arquivo não existe"; exit 1; }
 
-  IP=$(jq -r '.meu_ip // empty' "$CONFIG_FILE")
-  if [[ -z "$IP" || "$IP" == "null" ]]; then
-    echo "❌ Campo 'meu_ip' não definido em $CONFIG_FILE."
-    exit 1
-  fi
+  log "📄 Conteúdo de $CONFIG_FILE:"
+  sed -e 's/^/    /' "$CONFIG_FILE" >&2
 
-  echo "$IP"
+  local ip
+  ip=$(jq -r '.meu_ip // empty' "$CONFIG_FILE") || {
+    log "❌ jq falhou"; exit 1;
+  }
+  [ -z "$ip" ] && { log "❌ campo 'meu_ip' vazio"; exit 1; }
+
+  log "🖧 Meu IP do JSON: $ip"
+  echo "$ip"
 }
 
 iniciar_mesh() {
+  local IP
   IP=$(gerar_ip)
-  echo "🔑 IP atribuído: $IP"
 
-  echo "📴 Liberando interface $INTERFACE de conexões ativas..."
-  nmcli dev disconnect "$INTERFACE" >/dev/null 2>&1 || true
-  sudo systemctl stop NetworkManager >/dev/null 2>&1 || true
-  sudo ip addr flush dev "$INTERFACE"
+  log "📴 Limpando $INTERFACE"
+  nmcli dev disconnect "$INTERFACE" &>/dev/null || true
+  sudo systemctl stop NetworkManager &>/dev/null || true
   sudo ip link set "$INTERFACE" down
+  sudo ip addr flush dev "$INTERFACE"
 
-  echo "🔧 Configurando $INTERFACE como mesh ($SSID)..."
+  log "🔧 Montando IBSS em $INTERFACE (SSID=$SSID, canal=$CHANNEL)"
   sudo iwconfig "$INTERFACE" mode ad-hoc
   sudo iwconfig "$INTERFACE" essid "$SSID"
   sudo iwconfig "$INTERFACE" channel "$CHANNEL"
   sudo ip link set "$INTERFACE" up
-  sudo ip addr add "$IP"/24 dev "$INTERFACE"
 
-  echo "✅ Mesh ativa na interface $INTERFACE com IP $IP"
+  log "🛠️  Configurando batman-adv"
+  sudo modprobe batman_adv
+  sudo batctl if del "$INTERFACE" &>/dev/null || true
+  sudo batctl if add "$INTERFACE"
+  sudo ip link set up dev bat0
+
+  log "📡 Habilitando ip_forward e limpando iptables"
+  sudo sysctl -w net.ipv4.ip_forward=1 &>/dev/null
+  sudo iptables -F
+
+  log "📌 Atribuindo IP $IP/24 em bat0"
+  sudo ip addr add "$IP"/24 dev bat0
+
+  log "✅ Mesh pronta em bat0 com IP $IP"
 }
 
-# Execução principal
+# Execução
 verificar_pacotes
 detectar_interface
 verificar_ibss
