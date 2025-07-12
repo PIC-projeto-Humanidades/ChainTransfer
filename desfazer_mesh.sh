@@ -1,40 +1,39 @@
 #!/bin/bash
+set -euo pipefail
 
 : '
 🧹 Script: desfazer_mesh.sh
 🧠 Propósito:
-  Desativa a configuração Ad-Hoc/Mesh da interface Wi-Fi e restaura o modo gerenciado (managed).
+  Restaura a interface Wi-Fi usada na rede mesh Ad-Hoc (IBSS) para modo gerenciado.
 
 📋 Requisitos:
-  - Pacotes: wireless-tools, net-tools, iw
+  - Interface compatível com modo managed
+  - Pacotes: wireless-tools, net-tools
 '
 
-# Detecta a interface Wi-Fi usada
-INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | head -n1)
+# Detecta a interface Wi-Fi principal (ignora "mesh" virtuais)
+INTERFACE=$(iw dev | awk '$1=="Interface"{print $2}' | grep -v '^mesh' | head -n1 || true)
 
-if [ -z "$INTERFACE" ]; then
+if [ -z "${INTERFACE:-}" ]; then
   echo "❌ Nenhuma interface Wi-Fi detectada."
   exit 1
 fi
 
-echo "🛑 Desfazendo configuração da interface $INTERFACE..."
+echo "🛑 Restaurando estado da interface: $INTERFACE"
 
-# Limpa IPs e desativa interface
+# Libera e reseta a interface
 sudo ip addr flush dev "$INTERFACE"
 sudo ip link set "$INTERFACE" down
-
-# Tenta restaurar modo gerenciado
-echo "🔁 Restaurando modo gerenciado..."
 sudo iwconfig "$INTERFACE" mode managed
-sudo iwconfig "$INTERFACE" essid off
-sudo iwconfig "$INTERFACE" ap off
-
-# Reativa interface e NetworkManager
 sudo ip link set "$INTERFACE" up
-sudo systemctl start NetworkManager &>/dev/null || true
 
-# Exibe estado final
+# Remove possíveis interfaces virtuais mesh criadas manualmente
+for iface in $(ip link show | grep -oE '^.*mesh[0-9]*:' | sed 's/://g'); do
+  echo "🧹 Removendo interface virtual: $iface"
+  sudo ip link delete "$iface" type wlan || true
+done
+
+# Reativa o NetworkManager
+sudo systemctl start NetworkManager >/dev/null 2>&1 || true
+
 echo "✅ Interface $INTERFACE restaurada ao modo gerenciado."
-echo ""
-echo "📊 iwconfig atual:"
-iwconfig "$INTERFACE" | grep -E "ESSID|Mode|Freq|Cell"
