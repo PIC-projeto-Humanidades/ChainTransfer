@@ -1,10 +1,22 @@
+# services/gerar_hash.py
+
 import hashlib
 import json
+
 def gerar_hash(bundle_dict: dict) -> str:
-    # Ordena os nomes dos arquivos para garantir consistência no hash
-    sorted_bundle = {
-        **bundle_dict,
-        "file_names": sorted(bundle_dict["file_names"])
-    }
-    bundle_json = json.dumps(sorted_bundle, sort_keys=True)
-    return hashlib.sha256(bundle_json.encode()).hexdigest()
+    """
+    Gera um hash SHA256 único a partir da lista de arquivos.
+    Aceita chaves 'file_names' ou 'bundle'.
+    """
+    # Suporta ambos os formatos
+    file_list = bundle_dict.get("file_names")
+    if file_list is None:
+        file_list = bundle_dict.get("bundle", [])
+
+    # Garante lista ordenada
+    sorted_files = sorted(file_list)
+
+    # Serializa apenas os nomes de arquivo para o hash
+    data = json.dumps({"file_names": sorted_files}, separators=(",", ":"), ensure_ascii=False)
+    # Calcula SHA256 e retorna hex digest
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
