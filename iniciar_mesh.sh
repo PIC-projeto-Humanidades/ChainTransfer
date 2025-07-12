@@ -10,12 +10,16 @@
   - Pacotes: wireless-tools, iw, net-tools, jq
 
 ⚙️ Configurações:
-  - CONFIG_FILE: caminho para o JSON com a definição de IP
+  - CONFIG_FILE: caminho para o JSON com a definição de IP (sempre ao lado do script)
 '
 
 SSID="RedeMeshDTN"
 CHANNEL="6"
-CONFIG_FILE="/network_config.json"
+
+# Detecta o diretório onde o script está e usa para encontrar o JSON
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/network_config.json"
+
 PACOTES=("wireless-tools" "iw" "net-tools" "jq")
 
 verificar_pacotes() {
