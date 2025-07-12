@@ -1,7 +1,12 @@
 {
-    "meu_ip":"10.0.0.101",
-    "routes":[
-        {"node": "node-A", "ip": "10.0.0.102"},
-        {"node": "node-B", "ip": "10.0.0.101"}
-    ]
+  "ssid": "MESH_NET",
+  "password": "meshPassword",
+  "meu_ip": "10.0.0.2",
+  "prefixo": 28,
+  "gateway": "10.0.0.1",
+  "dns": ["8.8.8.8", "1.1.1.1"],
+  "routes": [
+    { "node": "node-A", "ip": "10.0.0.2" },
+    { "node": "node-B", "ip": "10.0.0.3" }
+  ]
 }

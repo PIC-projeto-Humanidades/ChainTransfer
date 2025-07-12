@@ -7,13 +7,13 @@ import json
 import uuid
 
 # Importa serviços e repositórios do sistema
-from services.network_service import routes,meu_ip           # Lista de nós conhecidos da rede, meu ip
-from utils.ping import ping                                  # Função para verificar se um IP está ativo
-from utils.hash_do_ip import hash_do_ip                      # Função para hashear o IP está ativo
-from services.storage_service import StorageService          # Serviço para manipular arquivos locais
-from services.download_file import download_file             # Função para fazer o download de arquivos
-from repository.bundle_repository import BundleRepository    # Repositório para manipular bundles recebidos
-from repository.files_receiver_repository import FilesReceiverRepository  # Repositório de arquivos baixados
+from services.network_service import meu_ip,routes    # Lista de nós conhecidos da rede, meu ip
+from utils.ping import ping                                             # Função para verificar se um IP está ativo
+from utils.hash_do_ip import hash_do_ip                                 # Função para hashear o IP está ativo
+from services.storage_service import StorageService                     # Serviço para manipular arquivos locais
+from services.download_file import download_file                        # Função para fazer o download de arquivos
+from repository.bundle_repository import BundleRepository               # Repositório para manipular bundles recebidos
+from repository.files_receiver_repository import FilesReceiverRepository# Repositório de arquivos baixados
 
 # Caminho para a pasta onde os arquivos locais serão monitorados
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
@@ -140,5 +140,5 @@ def routine():
 # 🔁 Inicia duas threads paralelas:
 # - Uma para observar novos arquivos locais
 # - Outra para buscar e baixar arquivos de outros nós
-threading.Thread(target=observe_and_rename, daemon=True).start()
-threading.Thread(target=routine, daemon=True).start()
+# threading.Thread(target=observe_and_rename, daemon=True).start()
+# threading.Thread(target=routine, daemon=True).start()

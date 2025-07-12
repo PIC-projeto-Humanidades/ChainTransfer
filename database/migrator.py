@@ -38,6 +38,3 @@ def create_tables():
     conn.commit()
     conn.close()
 
-if __name__ == "__main__":
-    create_tables()
-    print("✅ Tabelas com coluna 'status' criadas/verificadas com sucesso.")
