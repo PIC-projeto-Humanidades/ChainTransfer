@@ -24,6 +24,7 @@ def is_valid_uuid(text):
         return False
 
 def observe_and_rename():
+    # Só printa uma vez ao iniciar a thread
     print("👁️ Observando a pasta media_data para novos arquivos...")
     MEDIA_PATH.mkdir(parents=True, exist_ok=True)
     seen = set()
@@ -55,7 +56,7 @@ def routine():
         time.sleep(5)
         print("🔍 Procurando bundles em nós ativos...")
 
-        # Elimina duplicatas por IP para não logar várias vezes
+        # Deduplica nós por IP nesta iteração
         seen_ips = set()
         unique_nodes = []
         for node in routes():
@@ -73,11 +74,12 @@ def routine():
             try:
                 meu_ip_network = meu_ip(routes())
                 hash_secondary = hash_do_ip(meu_ip_network)
+
                 res = requests.get(f"http://{ip}:3000/bundle/{hash_secondary}", timeout=5)
                 try:
                     bundle = res.json()
                 except ValueError:
-                    print(f"❌ Resposta inválida do {ip}: {res.text}")
+                    print(f"❌ Resposta inválida de {ip}: {res.text}")
                     continue
 
                 bundle_hash = bundle.get("hash")
