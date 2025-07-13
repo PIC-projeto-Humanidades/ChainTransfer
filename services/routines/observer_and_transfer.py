@@ -1,9 +1,8 @@
+# services/routines/observer_and_transfer.py
 from pathlib import Path
 import os
 import time
 import requests
-import threading
-import json
 import uuid
 
 from services.network_service import meu_ip, routes
@@ -16,15 +15,16 @@ from repository.files_receiver_repository import FilesReceiverRepository
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
 RECEIVER_PATH = Path(__file__).resolve().parent.parent / "receiver"
 
-def is_valid_uuid(text):
+
+def is_valid_uuid(text: str) -> bool:
     try:
         uuid.UUID(text)
         return True
     except ValueError:
         return False
 
+
 def observe_and_rename():
-    # Thread única observando e renomeando arquivos sem loops infinitos
     print("👁️ Observando a pasta media_data para novos arquivos...")
     MEDIA_PATH.mkdir(parents=True, exist_ok=True)
     processed = set()
@@ -56,15 +56,17 @@ def observe_and_rename():
 
 
 def routine():
-    instance_BundleRepository = BundleRepository()
-    instance_FilesReceiverRepository = FilesReceiverRepository()
+    bundle_repo = BundleRepository()
+    files_repo = FilesReceiverRepository()
     print("⏳ Iniciando rotina recorrente a cada 5 segundos...")
+
+    # Guarda status anterior de cada bundle para evitar logs repetidos
+    bundle_status_cache = {}
 
     while True:
         time.sleep(5)
         print("🔍 Procurando bundles em nós ativos...")
 
-        # Deduplica nós por IP nesta iteração
         seen_ips = set()
         unique_nodes = []
         for node in routes():
@@ -78,12 +80,11 @@ def routine():
             if not ping(ip):
                 continue
 
-            print(f"📡 Dispositivo ativo - IP: {ip}, Node: {node['node']}")
             try:
-                meu_ip_network = meu_ip()
-                hash_secondary = hash_do_ip(meu_ip_network)
+                my_ip = meu_ip()
+                secondary_hash = hash_do_ip(my_ip)
+                res = requests.get(f"http://{ip}:3000/bundle/{secondary_hash}", timeout=5)
 
-                res = requests.get(f"http://{ip}:3000/bundle/{hash_secondary}", timeout=5)
                 try:
                     bundle = res.json()
                 except ValueError:
@@ -93,44 +94,46 @@ def routine():
                 bundle_hash = bundle.get("hash")
                 files = bundle.get("bundle", [])
                 if not bundle_hash or not isinstance(files, list):
-                    print("⚠️ Bundle inválido recebido, ignorando.")
                     continue
 
-                result = instance_BundleRepository.find_one_receiver(bundle_hash)
-                if result and result["status"]:
-                    print(f"✅ Bundle {bundle_hash} já concluído.")
-                    continue
+                # Verifica estado antigo
+                prev_status = bundle_status_cache.get(bundle_hash)
 
-                if not result:
+                record = bundle_repo.find_one_receiver(bundle_hash)
+                current_status = bool(record and record.get("status"))
+
+                # Primeiro, loga novo bundle
+                if record is None:
                     print(f"📦 Novo bundle recebido: {bundle_hash}")
-                    instance_BundleRepository.insert_bundle_receiver(bundle_hash, files, False)
-                    bundle_db = {"hash": bundle_hash, "bundle": files, "status": False}
-                else:
-                    print(f"ℹ️ Bundle {bundle_hash} ainda não concluído.")
-                    bundle_db = result
+                    bundle_repo.insert_bundle_receiver(bundle_hash, files, False)
+                    current_status = False
 
-                to_download = [
-                    f for f in bundle_db["bundle"]
-                    if not instance_FilesReceiverRepository.find_by_file_name(f)
-                ]
+                # Se mudou de não concluído para concluído, loga
+                if current_status and prev_status is not True:
+                    print(f"✅ Bundle {bundle_hash} concluído.")
 
+                # Atualiza cache
+                bundle_status_cache[bundle_hash] = current_status
+
+                # Se já concluído antes, pula download
+                if current_status:
+                    continue
+
+                # Baixa arquivos pendentes
+                to_download = [f for f in files if not files_repo.find_by_file_name(f)]
                 for fname in to_download:
-                    ok = download_file(ip, fname)
-                    if ok:
-                        instance_FilesReceiverRepository.insert_file(bundle_hash, fname)
-                        print(f"📥 Download do arquivo {fname} feito com sucesso.")
-                    else:
-                        print(f"❌ Falha ao baixar {fname}.")
+                    success = download_file(ip, fname)
+                    if success:
+                        files_repo.insert_file(bundle_hash, fname)
+                    # não loga cada arquivo baixado aqui para reduzir flood
 
-                all_files = instance_FilesReceiverRepository.find_by_hash(bundle_hash)
-                downloaded = {r["file_name"] for r in all_files}
-                expected = set(bundle_db["bundle"])
-                if expected <= downloaded:
+                # Atualiza status no repo se todos baixados
+                downloaded = {r.get("file_name") for r in files_repo.find_by_hash(bundle_hash)}
+                if set(files) <= downloaded:
+                    bundle_repo.update_status_receiver(bundle_hash, True)
+                    # marco a conclusão para o cache e log
+                    bundle_status_cache[bundle_hash] = True
                     print(f"✅ Todos os arquivos do bundle {bundle_hash} foram baixados.")
-                    instance_BundleRepository.update_status_receiver(bundle_hash, True)
-                else:
-                    missing = list(expected - downloaded)
-                    print(f"⚠️ Faltam arquivos para o bundle {bundle_hash}: {missing}")
 
             except Exception as e:
                 print(f"❌ Erro ao processar o nó {ip}: {e}")
