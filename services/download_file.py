@@ -47,6 +47,7 @@ def download_file(ip, file_name):
     headers = {"Range": f"bytes={downloaded_bytes}-"} if downloaded_bytes else {}
 
     try:
+        logger.info(f"🚀 Iniciando download de {file_name} de {ip}")
         res = requests.get(url, headers=headers, stream=True, timeout=30)
         if res.status_code not in (200, 206):
             logger.warning(f"Falha ao baixar {file_name} — Status {res.status_code}")
@@ -59,7 +60,7 @@ def download_file(ip, file_name):
             total_expected = int(res.headers.get("Content-Length", 0))
 
         mode = "ab" if downloaded_bytes else "wb"
-        logger.info(f"Iniciando {file_name}: {downloaded_bytes}/{total_expected or '??'} bytes já baixados")
+        logger.info(f"📥 {file_name}: retomando em {downloaded_bytes} bytes de {total_expected or 'desconhecido'}")
 
         current_size = downloaded_bytes
         with tmp_path.open(mode) as f:
@@ -70,27 +71,27 @@ def download_file(ip, file_name):
                 current_size += len(chunk)
                 if total_expected:
                     pct = (current_size / total_expected) * 100
-                    logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
+                    logger.info(f"⏳ {file_name}: {pct:.2f}% ({current_size}/{total_expected} bytes)")
                 else:
-                    logger.info(f"Progresso: {current_size} bytes")
+                    logger.info(f"⏳ {file_name}: {current_size} bytes baixados")
 
         # Verifica conclusão
         final_size = tmp_path.stat().st_size
         if total_expected and final_size < total_expected:
-            logger.error(f"Download incompleto: {final_size}/{total_expected} bytes")
+            logger.error(f"❌ {file_name} incompleto: {final_size}/{total_expected} bytes")
             return False
         if not total_expected and final_size == 0:
-            logger.error("Download falhou sem baixar nenhum byte")
+            logger.error(f"❌ {file_name} falhou sem baixar nenhum byte")
             return False
 
-        # Move do dir de processamento para media_data
+        # Move para media_data
         shutil.move(str(tmp_path), str(final_path))
-        logger.info(f"Download completo: {file_name}")
+        logger.info(f"✅ Download completo: {file_name}")
         return True
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Erro de conexão ao baixar {file_name}: {e}")
+        logger.error(f"⚠️ Erro de conexão ao baixar {file_name}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Erro inesperado ao processar download de {file_name}: {e}")
+        logger.error(f"⚠️ Erro inesperado ao processar {file_name}: {e}")
         return False
