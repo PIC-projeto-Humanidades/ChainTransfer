@@ -15,6 +15,20 @@ MEU_PORT=${PORT:-3000}
 WIFI_IF=$(nmcli -t -f DEVICE,TYPE dev status | awk -F: '$2=="wifi"{print $1; exit}')
 [[ -n "$WIFI_IF" ]] || { echo "❌ Sem interface Wi-Fi"; exit 1; }
 
+FLASK_PID=""
+
+cleanup() {
+  echo
+  echo "🛑 Supervisor encerrando…"
+  if [[ -n "$FLASK_PID" ]]; then
+    echo "  → Matando Flask (PID=$FLASK_PID)…"
+    kill "$FLASK_PID" 2>/dev/null || true
+    wait "$FLASK_PID" 2>/dev/null || true
+  fi
+  exit 0
+}
+trap cleanup EXIT INT TERM
+
 # Função: libera a porta, matando quem estiver nela
 free_port() {
   local port=$1
@@ -55,9 +69,11 @@ while true; do
 
   echo "+++ Associação OK. Liberando porta $MEU_PORT e iniciando Flask…"
   free_port "$MEU_PORT"
-  # Chama o app sem flags indesejadas
+
+  # Inicia o Flask sem flags extras, captura o PID
   python3 "$APP_SCRIPT" &
   FLASK_PID=$!
+  echo "    Flask iniciado com PID=$FLASK_PID"
 
   echo ">>> Monitorando estado da interface '$WIFI_IF'…"
   # Enquanto a interface estiver CONNECTED, mantém o Flask
@@ -65,9 +81,10 @@ while true; do
     sleep 5
   done
 
-  echo "*** Interface '$WIFI_IF' saiu do state connected! Matando Flask (PID=$FLASK_PID)…"
+  echo "*** Interface '$WIFI_IF' saiu do estado connected! Matando Flask (PID=$FLASK_PID)…"
   kill "$FLASK_PID" 2>/dev/null || true
   wait "$FLASK_PID" 2>/dev/null || true
+  FLASK_PID=""
 
   echo ">>> Aguardando 2s antes de tentar reconectar…"
   sleep 2
