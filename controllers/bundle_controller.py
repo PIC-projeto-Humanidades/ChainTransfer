@@ -42,7 +42,7 @@ def list_filtered_files() -> list[str]:
 @bundle_bp.route("/bundle/<hash_secondary>", methods=["GET"])
 def get_bundle(hash_secondary):
     # 1) Aguarda até 60s para que não haja arquivos sem UUID nem .part
-    deadline = time.time() + 20
+    deadline = time.time() + 60
     while time.time() < deadline:
         files_now = list_filtered_files()
         # Se houver algum que não tenha recebido o sufixo -UUID, continua aguardando
