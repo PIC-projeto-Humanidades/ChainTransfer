@@ -29,7 +29,7 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 # Pasta de destino
-RECEIVER_DIR = Path(__file__).resolve().parent.parent / "receiver"
+RECEIVER_DIR = Path(__file__).resolve().parent.parent / "media_data"
 RECEIVER_DIR.mkdir(parents=True, exist_ok=True)
 
 def download_file(ip, file_name):
@@ -48,38 +48,53 @@ def download_file(ip, file_name):
             logger.warning(f"Falha ao baixar {file_name} — Status {res.status_code}")
             return False
 
-        # Tamanho total esperado
+        # Obtém tamanho total esperado
         if "Content-Range" in res.headers:
             total_expected = int(res.headers["Content-Range"].split("/")[-1])
         else:
             total_expected = int(res.headers.get("Content-Length", 0))
 
         mode = "ab" if downloaded_bytes else "wb"
-        logger.info(f"Iniciando {file_name}: {downloaded_bytes}/{total_expected} bytes já baixados")
+        logger.info(f"Iniciando {file_name}: {downloaded_bytes}/{total_expected or '??'} bytes já baixados")
 
-        with open(tmp_path, mode) as f:
-            current_size = downloaded_bytes
-            for chunk in res.iter_content(chunk_size=1024*1024):
-                if not chunk:
-                    continue
+        current_size = downloaded_bytes
+        for chunk in res.iter_content(chunk_size=1024*1024):
+            if not chunk:
+                continue
+            f = tmp_path.open(mode)
+            try:
                 f.write(chunk)
-                current_size += len(chunk)
-                if total_expected:
-                    pct = (current_size / total_expected) * 100
-                    logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
-                else:
-                    logger.info(f"Progresso: {current_size} bytes")
+            finally:
+                f.close()
+            current_size += len(chunk)
+            if total_expected:
+                pct = (current_size / total_expected) * 100
+                logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
+            else:
+                logger.info(f"Progresso: {current_size} bytes")
 
-        # Verifica conclusão
-        current_size = tmp_path.stat().st_size
-        if total_expected and current_size < total_expected:
-            logger.info(f"Download parcial: {current_size}/{total_expected} bytes")
-            return False
+        # Após o loop, verifica se chegou ao final esperado
+        final_size = tmp_path.stat().st_size
+        if total_expected:
+            if final_size < total_expected:
+                logger.error(f"Download incompleto: {final_size}/{total_expected} bytes")
+                return False
+        else:
+            # Se não havia Content-Length, exige ao menos >0 bytes
+            if final_size == 0:
+                logger.error("Download falhou sem baixar nenhum byte")
+                return False
 
+        # Tudo certo: renomeia e retorna True
         tmp_path.rename(final_path)
         logger.info(f"Download completo: {file_name}")
         return True
 
+    except requests.exceptions.RequestException as e:
+        # Captura timeouts, conexões interrompidas, etc.
+        logger.error(f"Erro de conexão ao baixar {file_name}: {e}")
+        return False
     except Exception as e:
-        logger.error(f"Erro ao baixar {file_name}: {e}")
+        # Qualquer outra falha de IO
+        logger.error(f"Erro inesperado ao processar download de {file_name}: {e}")
         return False
