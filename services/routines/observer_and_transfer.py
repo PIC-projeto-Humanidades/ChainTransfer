@@ -24,25 +24,33 @@ def is_valid_uuid(text):
         return False
 
 def observe_and_rename():
-    # Só printa uma vez ao iniciar a thread
+    # Thread única observando e renomeando arquivos sem loops infinitos
     print("👁️ Observando a pasta media_data para novos arquivos...")
     MEDIA_PATH.mkdir(parents=True, exist_ok=True)
-    seen = set()
+    processed = set()
 
     while True:
         for file in MEDIA_PATH.iterdir():
-            if not file.is_file() or file.name in seen:
+            if not file.is_file() or file.name in processed:
                 continue
-            seen.add(file.name)
+            processed.add(file.name)
 
             stem = file.stem
-            last = stem.split("-")[-1]
-            if "-" not in stem or not is_valid_uuid(last):
-                new_name = f"{stem}-{uuid.uuid4()}{file.suffix}"
-                new_path = MEDIA_PATH / new_name
+            if len(stem) > 50:
+                continue
+
+            parts = stem.rsplit('-', 1)
+            if len(parts) == 2 and is_valid_uuid(parts[1]):
+                continue
+
+            new_name = f"{stem}-{uuid.uuid4()}{file.suffix}"
+            new_path = MEDIA_PATH / new_name
+            try:
                 file.rename(new_path)
                 print(f"📝 Arquivo renomeado: {file.name} → {new_name}")
-                seen.add(new_name)
+                processed.add(new_name)
+            except OSError as e:
+                print(f"❌ Falha ao renomear {file.name}: {e}")
 
         time.sleep(5)
 
@@ -72,7 +80,7 @@ def routine():
 
             print(f"📡 Dispositivo ativo - IP: {ip}, Node: {node['node']}")
             try:
-                meu_ip_network = meu_ip(routes())
+                meu_ip_network = meu_ip()
                 hash_secondary = hash_do_ip(meu_ip_network)
 
                 res = requests.get(f"http://{ip}:3000/bundle/{hash_secondary}", timeout=5)
