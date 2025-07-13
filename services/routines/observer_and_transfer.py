@@ -105,7 +105,9 @@ def routine():
             try:
                 my_ip = meu_ip()
                 secondary_hash = hash_do_ip(my_ip)
+                logger.info("⏳ Obtendo bundles em nós ativos 20s")
                 res = requests.get(f"http://{ip}:3000/bundle/{secondary_hash}", timeout=(5, 65))
+                logger.info("✅ Bundle em nós ativos recebido com sucesso")
                 try:
                     bundle = res.json()
                 except ValueError:
