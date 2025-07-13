@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Verifica se o Wi-Fi está ligado; se não, ativa
+WIFI_RADIO_STATE=$(nmcli -t -f WIFI g)
+if [[ "$WIFI_RADIO_STATE" == "disabled" ]]; then
+  echo ">>> Wi-Fi está desabilitado. Habilitando..."
+  nmcli radio wifi on
+  # Aguarda um instante para a interface ficar disponível
+  sleep 2
+fi
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CFG="$BASE_DIR/network_config.json"
