@@ -16,9 +16,6 @@ MEDIA_PATH = BASE_PATH / "media_data"
 storage_service = StorageService(media_path=MEDIA_PATH)
 
 def has_uuid_suffix(name: str) -> bool:
-    """
-    Retorna True se o stem do arquivo terminar em -UUID válido.
-    """
     stem = Path(name).stem
     parts = stem.rsplit("-", 1)
     if len(parts) != 2:
@@ -41,15 +38,14 @@ def list_filtered_files() -> list[str]:
 @bundle_bp.route("/bundle", defaults={"hash_secondary": None}, methods=["GET"])
 @bundle_bp.route("/bundle/<hash_secondary>", methods=["GET"])
 def get_bundle(hash_secondary):
-    # 1) Aguarda até 60s para que não haja arquivos sem UUID nem .part
-    deadline = time.time() + 60
-    while time.time() < deadline:
+    # 1) Aguarda indefinidamente até que todos os arquivos estejam hasheados
+    while True:
+        time.sleep(2)
         files_now = list_filtered_files()
-        # Se houver algum que não tenha recebido o sufixo -UUID, continua aguardando
+        # encontra quem ainda não recebeu o -UUID
         un_hashed = [f for f in files_now if not has_uuid_suffix(f)]
         if not un_hashed:
             break
-        time.sleep(2)
 
     # 2) Re-lista arquivos já processados (sem .part)
     file_names = list_filtered_files()
