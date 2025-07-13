@@ -4,6 +4,7 @@ from pathlib import Path
 import requests
 import logging
 from colorama import init, Fore, Style
+import shutil
 
 # Inicializa Colorama
 init(autoreset=True)
@@ -28,14 +29,17 @@ handler.setFormatter(ColorFormatter("%(asctime)s [%(levelname)s] %(message)s", d
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-# Pasta de destino
-RECEIVER_DIR = Path(__file__).resolve().parent.parent / "media_data"
-RECEIVER_DIR.mkdir(parents=True, exist_ok=True)
+# Pastas de trabalho
+BASE_DIR       = Path(__file__).resolve().parent.parent
+PROCESS_DIR    = BASE_DIR / "download_processamento"
+MEDIA_DIR      = BASE_DIR / "media_data"
+PROCESS_DIR.mkdir(parents=True, exist_ok=True)
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 def download_file(ip, file_name):
     url = f"http://{ip}:3000/file/{file_name}"
-    tmp_path = RECEIVER_DIR / (file_name + ".part")
-    final_path = RECEIVER_DIR / file_name
+    tmp_path   = PROCESS_DIR / (file_name + ".part")
+    final_path = MEDIA_DIR / file_name
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Retoma se já existe parcial
@@ -58,43 +62,35 @@ def download_file(ip, file_name):
         logger.info(f"Iniciando {file_name}: {downloaded_bytes}/{total_expected or '??'} bytes já baixados")
 
         current_size = downloaded_bytes
-        for chunk in res.iter_content(chunk_size=1024*1024):
-            if not chunk:
-                continue
-            f = tmp_path.open(mode)
-            try:
+        with tmp_path.open(mode) as f:
+            for chunk in res.iter_content(chunk_size=1024*1024):
+                if not chunk:
+                    continue
                 f.write(chunk)
-            finally:
-                f.close()
-            current_size += len(chunk)
-            if total_expected:
-                pct = (current_size / total_expected) * 100
-                logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
-            else:
-                logger.info(f"Progresso: {current_size} bytes")
+                current_size += len(chunk)
+                if total_expected:
+                    pct = (current_size / total_expected) * 100
+                    logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
+                else:
+                    logger.info(f"Progresso: {current_size} bytes")
 
-        # Após o loop, verifica se chegou ao final esperado
+        # Verifica conclusão
         final_size = tmp_path.stat().st_size
-        if total_expected:
-            if final_size < total_expected:
-                logger.error(f"Download incompleto: {final_size}/{total_expected} bytes")
-                return False
-        else:
-            # Se não havia Content-Length, exige ao menos >0 bytes
-            if final_size == 0:
-                logger.error("Download falhou sem baixar nenhum byte")
-                return False
+        if total_expected and final_size < total_expected:
+            logger.error(f"Download incompleto: {final_size}/{total_expected} bytes")
+            return False
+        if not total_expected and final_size == 0:
+            logger.error("Download falhou sem baixar nenhum byte")
+            return False
 
-        # Tudo certo: renomeia e retorna True
-        tmp_path.rename(final_path)
+        # Move do dir de processamento para media_data
+        shutil.move(str(tmp_path), str(final_path))
         logger.info(f"Download completo: {file_name}")
         return True
 
     except requests.exceptions.RequestException as e:
-        # Captura timeouts, conexões interrompidas, etc.
         logger.error(f"Erro de conexão ao baixar {file_name}: {e}")
         return False
     except Exception as e:
-        # Qualquer outra falha de IO
         logger.error(f"Erro inesperado ao processar download de {file_name}: {e}")
         return False
