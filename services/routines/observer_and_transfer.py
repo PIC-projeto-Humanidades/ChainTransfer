@@ -38,7 +38,6 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
-RECEIVER_PATH = Path(__file__).resolve().parent.parent / "receiver"
 
 def is_valid_uuid(text: str) -> bool:
     try:
@@ -106,7 +105,7 @@ def routine():
             try:
                 my_ip = meu_ip()
                 secondary_hash = hash_do_ip(my_ip)
-                res = requests.get(f"http://{ip}:3000/bundle/{secondary_hash}", timeout=5)
+                res = requests.get(f"http://{ip}:3000/bundle/{secondary_hash}", timeout=(5, 65))
                 try:
                     bundle = res.json()
                 except ValueError:
@@ -136,7 +135,21 @@ def routine():
                 if current_status:
                     continue
 
-                to_download = [f for f in files if not files_repo.find_by_file_name(f)]
+                # coleta só os arquivos que ainda não estão no DB
+                initial_to_download = [f for f in files if not files_repo.find_by_file_name(f)]
+
+                # verifica se algum desse initial_to_download já existe em media_data
+                existing = {f.name for f in MEDIA_PATH.iterdir() if f.is_file()}
+                to_download = []
+                for fname in initial_to_download:
+                    if fname in existing:
+                        # registra como já baixado
+                        files_repo.insert_file(bundle_hash, fname)
+                        logger.info(f"ℹ️ Arquivo já existente em media_data: {fname} — marcando como recebido")
+                    else:
+                        to_download.append(fname)
+
+                # agora baixa de fato só o que falta
                 for fname in to_download:
                     ok = download_file(ip, fname)
                     if ok:
