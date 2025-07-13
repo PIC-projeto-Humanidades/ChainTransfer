@@ -3,18 +3,34 @@
 from pathlib import Path
 import requests
 import logging
+from colorama import init, Fore, Style
 
-# Configura logging
+# Inicializa Colorama
+init(autoreset=True)
+
+class ColorFormatter(logging.Formatter):
+    LEVEL_COLORS = {
+        logging.DEBUG: Fore.CYAN,
+        logging.INFO: Fore.GREEN,
+        logging.WARNING: Fore.YELLOW,
+        logging.ERROR: Fore.RED,
+        logging.CRITICAL: Fore.RED + Style.BRIGHT,
+    }
+    def format(self, record):
+        color = self.LEVEL_COLORS.get(record.levelno, "")
+        message = super().format(record)
+        return f"{color}{message}{Style.RESET_ALL}"
+
+# Configura logger colorido
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler()
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-handler.setFormatter(formatter)
+handler.setFormatter(ColorFormatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
+# Pasta de destino
 RECEIVER_DIR = Path(__file__).resolve().parent.parent / "receiver"
 RECEIVER_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def download_file(ip, file_name):
     url = f"http://{ip}:3000/file/{file_name}"
@@ -32,14 +48,15 @@ def download_file(ip, file_name):
             logger.warning(f"Falha ao baixar {file_name} — Status {res.status_code}")
             return False
 
-        # Determina tamanho total esperado
+        # Tamanho total esperado
         if "Content-Range" in res.headers:
             total_expected = int(res.headers["Content-Range"].split("/")[-1])
         else:
             total_expected = int(res.headers.get("Content-Length", 0))
 
         mode = "ab" if downloaded_bytes else "wb"
-        logger.info(f"Iniciando download de {file_name}: {downloaded_bytes}/{total_expected} bytes já baixados")
+        logger.info(f"Iniciando {file_name}: {downloaded_bytes}/{total_expected} bytes já baixados")
+
         with open(tmp_path, mode) as f:
             current_size = downloaded_bytes
             for chunk in res.iter_content(chunk_size=1024*1024):
@@ -48,23 +65,19 @@ def download_file(ip, file_name):
                 f.write(chunk)
                 current_size += len(chunk)
                 if total_expected:
-                    downloaded_percent = (current_size / total_expected) * 100
-                    remaining_percent = 100 - downloaded_percent
-                    logger.info(
-                        f"Progresso: {current_size}/{total_expected} bytes "
-                        f"({downloaded_percent:.2f}% baixado, {remaining_percent:.2f}% restante)"
-                    )
+                    pct = (current_size / total_expected) * 100
+                    logger.info(f"Progresso: {pct:.2f}% ({current_size}/{total_expected} bytes)")
                 else:
-                    logger.info(f"Progresso: {current_size} bytes baixados")
+                    logger.info(f"Progresso: {current_size} bytes")
 
-        # Verifica se já recebemos tudo
+        # Verifica conclusão
         current_size = tmp_path.stat().st_size
         if total_expected and current_size < total_expected:
-            logger.info(f"Download parcial: {current_size}/{total_expected} bytes salvos em {tmp_path}")
+            logger.info(f"Download parcial: {current_size}/{total_expected} bytes")
             return False
 
         tmp_path.rename(final_path)
-        logger.info(f"Download completo: {final_path}")
+        logger.info(f"Download completo: {file_name}")
         return True
 
     except Exception as e:
