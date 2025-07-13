@@ -45,3 +45,8 @@ BIBLIOTECAS E TECNOLOGIAS UTILIZADAS
 
 Obrigado por usar este supervisor!
 Contribuições e feedback são bem-vindos via issues ou pull requests.
+
+Comandos uteis:
+Para encerrar a aplicacao imediatamente forçadamente
+sudo kill $(pgrep -f "run_supervisor.sh")
+sudo kill $(pgrep -f "app.py")
