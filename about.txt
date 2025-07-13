@@ -1,0 +1,47 @@
+SOBRE O PROJETO
+
+Este repositório contém um supervisor de conexão mesh + Flask que automatiza a associação a uma rede Wi-Fi mesh, garante que o serviço Flask esteja sempre em execução e reinicia automaticamente caso a interface caia.
+
+OBJETIVO
+
+• Automatizar a conexão a uma rede mesh com fallback contínuo
+• Manter um aplicativo Flask rodando, reiniciando-o em caso de desconexão
+• Registrar logs separados para o supervisor (bash) e para o Flask (Python)
+• Oferecer uma interface de linha de comando simples para start, stop, restart, status, logs e help
+
+LICENÇA
+
+Este projeto está licenciado sob a MIT License. Consulte o arquivo LICENSE para detalhes.
+
+COMANDOS
+
+./run_supervisor.sh start
+Inicia o supervisor em background
+./run_supervisor.sh stop
+Para o supervisor e todos os processos filhos
+./run_supervisor.sh restart
+Reinicia o supervisor (stop + start)
+./run_supervisor.sh status
+Exibe PID e estado do supervisor
+./run_supervisor.sh logs [modo]
+Exibe logs em tempo real; modos disponíveis:
+supervisor – apenas supervisor.log
+app – apenas logs/app.txt
+all (padrão)– ambos em paralelo
+./run_supervisor.sh help
+Exibe instruções de uso
+
+BIBLIOTECAS E TECNOLOGIAS UTILIZADAS
+
+• Shell Script (bash)
+• nmcli (NetworkManager CLI) para gerenciar e monitorar a interface Wi-Fi
+• jq para leitura de parâmetros em network_config.json
+• Flask (Python) para a aplicação web em app.py
+• pip3 para instalação de dependências via requirements.txt
+• setsid para criar session/process group isolado
+• lsof, pkill e kill para controle de porta e encerramento de processos
+• nohup para execução ininterrupta em background
+• Logs separados em logs/supervisor.log (bash) e logs/app.txt (Flask)
+
+Obrigado por usar este supervisor!
+Contribuições e feedback são bem-vindos via issues ou pull requests.

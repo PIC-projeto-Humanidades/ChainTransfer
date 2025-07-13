@@ -7,92 +7,162 @@ APP_SCRIPT="$BASE_DIR/app.py"
 CFG_FILE="$BASE_DIR/network_config.json"
 REQ_FILE="$BASE_DIR/requirements.txt"
 
-# Carrega SSID e porta do JSON
-SSID=$(jq -r '.ssid' "$CFG_FILE")
-MEU_PORT=${PORT:-3000}
+PID_FILE="$BASE_DIR/supervisor.pid"
+LOG_FILE="$BASE_DIR/logs/supervisor.log"
+APP_LOG_DIR="$BASE_DIR/logs"
+APP_LOG_FILE="$APP_LOG_DIR/app.txt"
 
-# Detecta interface Wi-Fi (uma vez)
-WIFI_IF=$(nmcli -t -f DEVICE,TYPE dev status | awk -F: '$2=="wifi"{print $1; exit}')
-[[ -n "$WIFI_IF" ]] || { echo "❌ Sem interface Wi-Fi"; exit 1; }
+# ------------------------------------------------------------------
+# Subcomando interno: loop principal
+if [[ "${1:-}" == "__run" ]]; then
+  shift
+  WIFI_IF=$(nmcli -t -f DEVICE,TYPE dev status | awk -F: '$2=="wifi"{print $1; exit}')
+  [[ -n "$WIFI_IF" ]] || { echo "❌ Sem interface Wi-Fi"; exit 1; }
+  RUN_USER="${SUDO_USER:-$USER}"
+  [[ "$RUN_USER" == "root" ]] && RUN_USER="$USER"
+  SSID=$(jq -r '.ssid' "$CFG_FILE")
+  MEU_PORT=${PORT:-3000}
 
-# Descobre o usuário “real” (quem chamou sudo)
-if [[ -n "${SUDO_USER-}" && "$SUDO_USER" != "root" ]]; then
-  RUN_USER="$SUDO_USER"
-else
-  RUN_USER="$USER"
-fi
+  mkdir -p "$APP_LOG_DIR"
+  trap 'echo; echo "🛑 Supervisor recebeu sinal de saída."; exit 0' EXIT INT TERM
 
-FLASK_PID=""
-
-cleanup() {
-  echo
-  echo "🛑 Supervisor encerrando…"
-  if [[ -n "$FLASK_PID" ]]; then
-    echo "  → Matando Flask (PID=$FLASK_PID)…"
-    kill "$FLASK_PID" 2>/dev/null || true
-    wait "$FLASK_PID" 2>/dev/null || true
+  if ! command -v python3 &>/dev/null || ! command -v pip3 &>/dev/null; then
+    echo "❯ Instalando python3/pip3..."
+    sudo apt update && sudo apt install -y python3 python3-pip
   fi
-  exit 0
-}
-trap cleanup EXIT INT TERM
+  [[ -f "$REQ_FILE" ]] && sudo -u "$RUN_USER" pip3 install --user -r "$REQ_FILE"
 
-# Função: libera a porta, matando quem estiver nela
-free_port() {
-  local port=$1
-  local pids
-  pids=$(lsof -ti :"$port" || true)
-  if [[ -n "$pids" ]]; then
-    echo ">>> Porta $port ocupada pelos PIDs: $pids. Matando..."
-    kill -9 $pids
-    echo ">>> Porta $port liberada."
-  fi
-}
+  echo "=== Supervisor Mesh + Flask ===" >>"$LOG_FILE"
+  echo "Usuário: $RUN_USER • SSID: $SSID • IF: $WIFI_IF • Porta: $MEU_PORT" >>"$LOG_FILE"
+  echo >>"$LOG_FILE"
 
-# 1) Garante python3 + pip3
-if ! command -v python3 &>/dev/null || ! command -v pip3 &>/dev/null; then
-  echo "❯ Instalando python3/pip3..."
-  sudo apt update && sudo apt install -y python3 python3-pip
-fi
+  while true; do
+    echo ">>> (Re)associando a '$SSID'…" >>"$LOG_FILE"
+    "$CONNECT_SCRIPT" "$SSID"
 
-# 2) Instala dependências Python como usuário normal
-if [[ -f "$REQ_FILE" ]]; then
-  echo "❯ Instalando dependências Python para $RUN_USER..."
-  sudo -u "$RUN_USER" pip3 install --user -r "$REQ_FILE"
-fi
+    echo "+++ Associação OK. Liberando porta $MEU_PORT…" >>"$LOG_FILE"
+    pids=$(lsof -ti :"$MEU_PORT" || true)
+    [[ -n "$pids" ]] && kill -9 $pids
 
-# 3) Verifica scripts e config
-for f in "$CONNECT_SCRIPT" "$APP_SCRIPT" "$CFG_FILE"; do
-  [[ -e "$f" ]] || { echo "❌ $f não encontrado"; exit 1; }
-done
-[[ -x "$CONNECT_SCRIPT" ]] || chmod +x "$CONNECT_SCRIPT"
+    echo ">>> Iniciando Flask como $RUN_USER…" >>"$LOG_FILE"
+    sudo -u "$RUN_USER" python3 "$APP_SCRIPT" >>"$APP_LOG_FILE" 2>&1 &
+    FLASK_PID=$!
 
-echo "=== Supervisor Mesh + Flask ==="
-echo "Usuário Flask: $RUN_USER — SSID: $SSID — IF: $WIFI_IF — Porta: $MEU_PORT"
-echo "Pressione Ctrl+C para encerrar."
+    echo ">>> Monitorando interface $WIFI_IF…" >>"$LOG_FILE"
+    while nmcli -t -f DEVICE,STATE dev status | grep -q "^${WIFI_IF}:connected$" \
+      && nmcli -t -f SSID,DEVICE dev wifi | grep -q "^${SSID}:${WIFI_IF}$"
+    do
+      sleep 5
+    done
 
-while true; do
-  echo
-  echo ">>> (Re)associando ao SSID '$SSID'…"
-  "$CONNECT_SCRIPT" "$SSID"
+    echo "*** Interface desconectou! Matando Flask (PID=$FLASK_PID)…" >>"$LOG_FILE"
+    kill "$FLASK_PID" || true
 
-  echo "+++ Associação OK. Liberando porta $MEU_PORT e iniciando Flask como $RUN_USER…"
-  free_port "$MEU_PORT"
-
-  # Inicia o Flask como usuário normal
-  sudo -u "$RUN_USER" python3 "$APP_SCRIPT" &
-  FLASK_PID=$!
-  echo "    Flask iniciado com PID=$FLASK_PID (usuário: $RUN_USER)"
-
-  echo ">>> Monitorando estado da interface '$WIFI_IF'…"
-  while nmcli -t -f DEVICE,STATE dev status | grep -q "^${WIFI_IF}:connected$"; do
-    sleep 5
+    echo ">>> Aguardando 2s antes de reconectar…" >>"$LOG_FILE"
+    sleep 2
   done
+fi
 
-  echo "*** Interface '$WIFI_IF' saiu do estado connected! Matando Flask (PID=$FLASK_PID)…"
-  kill "$FLASK_PID" 2>/dev/null || true
-  wait "$FLASK_PID" 2>/dev/null || true
-  FLASK_PID=""
+# ------------------------------------------------------------------
+# Funções de controle
 
-  echo ">>> Aguardando 2s antes de tentar reconectar…"
-  sleep 2
-done
+function help() {
+  cat <<EOF
+Uso: $0 <comando> [args]
+
+Comandos:
+  start            Inicia o supervisor em background
+  stop             Para o supervisor em execução
+  restart          Reinicia o supervisor (stop + start)
+  status           Exibe se o supervisor está rodando (PID)
+  logs [modo]      Mostra os logs:
+                     supervisor  – apenas supervisor.log
+                     app         – apenas logs/app.txt
+                     all (padrão)– ambos em paralelo
+  help, -h, --help Exibe esta ajuda
+EOF
+}
+
+function start() {
+  if [[ -f "$PID_FILE" && -d /proc/$(<"$PID_FILE") ]]; then
+    echo "Supervisor já está em execução (PID=$(<"$PID_FILE"))"
+    return 1
+  fi
+  echo "Iniciando supervisor em background..."
+  nohup bash "$0" __run >>"$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  echo "Supervisor iniciado (PID=$(<"$PID_FILE"))"
+}
+
+function stop() {
+  if [[ ! -f "$PID_FILE" ]]; then
+    echo "Supervisor não está em execução."
+    return 1
+  fi
+
+  PID=$(<"$PID_FILE")
+  # obtém o process group id
+  PGID=$(ps -o pgid= "$PID" | tr -d ' ')
+
+  echo "Parando supervisor (PID=$PID, PGID=$PGID)…"
+  # mata todo o session/process group
+  kill -TERM -"${PGID}" 2>/dev/null || true
+  # garantia extra: mata quaisquer filhos diretos restantes
+  pkill -TERM -P "$PID" 2>/dev/null || true
+
+  sleep 1
+  rm -f "$PID_FILE"
+  echo "Supervisor parado."
+}
+
+
+
+function status() {
+  if [[ -f "$PID_FILE" && -d /proc/$(<"$PID_FILE") ]]; then
+    echo "Supervisor em execução (PID=$(<"$PID_FILE"))"
+  else
+    echo "Supervisor não está em execução."
+    return 1
+  fi
+}
+
+function logs() {
+  mode=${2:-all}
+  case "$mode" in
+    supervisor)
+      [[ -f "$LOG_FILE" ]] || { echo "Nenhum log do supervisor."; return 1; }
+      tail -n50 -f "$LOG_FILE"
+      ;;
+    app)
+      [[ -f "$APP_LOG_FILE" ]] || { echo "Nenhum log da aplicação."; return 1; }
+      tail -n50 -f "$APP_LOG_FILE"
+      ;;
+    all)
+      [[ -f "$LOG_FILE" ]] || echo "[sem logs supervisor]"
+      [[ -f "$APP_LOG_FILE" ]] || echo "[sem logs app]"
+      tail -n50 -f "$LOG_FILE" "$APP_LOG_FILE"
+      ;;
+    *)
+      echo "Uso: $0 logs {supervisor|app|all}"
+      return 1
+      ;;
+  esac
+}
+
+function restart() {
+  echo "Reiniciando supervisor..."
+  stop
+  start
+}
+
+# ------------------------------------------------------------------
+# Dispatch
+case "${1:-}" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) restart ;;
+  status)  status ;;
+  logs)    logs "$@" ;;
+  help|-h|--help) help ;;
+  *) echo "Comando inválido. Use '$0 help' para ver os comandos disponíveis." >&2; exit 1 ;;
+esac

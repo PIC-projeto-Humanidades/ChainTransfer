@@ -62,3 +62,5 @@ __pycache__/
 */*/*/__pycache__/
 */*/*/*/__pycache__/
 download_processamento/
+logs/app.txt
+logs/supervisor.log

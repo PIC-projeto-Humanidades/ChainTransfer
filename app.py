@@ -7,6 +7,7 @@ from controllers.file_controller import file_bp
 from database.migrator import create_tables
 from services.network_service import meu_ip
 from services.routines import start_routines
+from logs.log_f import log_f as logger 
 
 def create_app(start_background_routines=True):
     app = Flask(__name__)
@@ -20,13 +21,17 @@ def create_app(start_background_routines=True):
     return app
 
 if __name__ == '__main__':
+    logger("\n\n")
+    logger("=======================================================================")
+    logger("                         inciando o chainTransfer")
+    logger("=======================================================================")
     create_tables()
     parser = argparse.ArgumentParser()
     parser.add_argument('--only-api', action='store_true', help='Inicia apenas o servidor Flask.')
     parser.add_argument('--only-routine', action='store_true', help='Inicia apenas a rotina DTN.')
     args = parser.parse_args()
 
-    host_ip = meu_ip()  # IP extraído via MAC
+    host_ip = "0.0.0.0"  # IP extraído via MAC
 
     if args.only_api:
         app = create_app(start_background_routines=False)
