@@ -17,44 +17,37 @@ from repository.files_receiver_repository import FilesReceiverRepository
 
 MEDIA_PATH = Path(os.getcwd()) / "media_data"
 
-def is_valid_uuid(text: str) -> bool:
-    try:
-        uuid.UUID(text)
-        return True
-    except ValueError:
-        return False
+# def observe_and_rename():
+#     logger("👁️  Observando a pasta media_data para novos arquivos...")
+#     MEDIA_PATH.mkdir(parents=True, exist_ok=True)
+#     processed = set()
 
-def observe_and_rename():
-    logger("👁️  Observando a pasta media_data para novos arquivos...")
-    MEDIA_PATH.mkdir(parents=True, exist_ok=True)
-    processed = set()
+#     while True:
+#         for file in MEDIA_PATH.iterdir():
+#             if not file.is_file() or file.name in processed:
+#                 continue
+#             processed.add(file.name)
 
-    while True:
-        for file in MEDIA_PATH.iterdir():
-            if not file.is_file() or file.name in processed:
-                continue
-            processed.add(file.name)
+#             stem = file.stem
+#             # pula stems muito longos
+#             if len(stem) > 50:
+#                 logger(f"Stem muito longo, pulando: {stem}")
+#                 continue
 
-            stem = file.stem
-            # pula stems muito longos
-            if len(stem) > 50:
-                logger(f"Stem muito longo, pulando: {stem}")
-                continue
+#             parts = stem.rsplit('-', 1)
+#             if len(parts) == 2 and is_valid_uuid(parts[1]):
+#                 continue
 
-            parts = stem.rsplit('-', 1)
-            if len(parts) == 2 and is_valid_uuid(parts[1]):
-                continue
+#             new_name = f"{stem}-{uuid.uuid4()}{file.suffix}"
+#             new_path = MEDIA_PATH / new_name
+#             try:
+#                 file.rename(new_path)
+#                 logger(f"📝 Arquivo renomeado: {file.name} → {new_name}")
+#                 processed.add(new_name)
+#             except OSError as e:
+#                 logger(f"❌ Falha ao renomear {file.name}: {e}")
 
-            new_name = f"{stem}-{uuid.uuid4()}{file.suffix}"
-            new_path = MEDIA_PATH / new_name
-            try:
-                file.rename(new_path)
-                logger(f"📝 Arquivo renomeado: {file.name} → {new_name}")
-                processed.add(new_name)
-            except OSError as e:
-                logger(f"❌ Falha ao renomear {file.name}: {e}")
-
-        time.sleep(5)
+#         time.sleep(5)
 
 def routine():
     bundle_repo = BundleRepository()
