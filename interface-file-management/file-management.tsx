@@ -1,153 +1,214 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { Upload, RefreshCw, Check, Clock, Server, FileText, X as XIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
+import React, { useState, useEffect } from "react";
+import {
+  Upload,
+  RefreshCw,
+  Check,
+  Clock,
+  Server,
+  FileText,
+  X as XIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import LogTerminal from "@/components/ui/LogTerminal";
 
-type FileStatus = "server" | "waiting" | "pending-approval"
+type FileStatus = "server" | "waiting" | "pending-approval";
 
 interface FileItem {
-  id: string
-  name: string
-  size: string
-  status: FileStatus
-  uploadDate?: string
-  fileObject?: File
+  id: string;
+  name: string;
+  size: string;
+  status: FileStatus;
+  uploadDate?: string;
+  fileObject?: File;
 }
 
 export default function FileManagement() {
-  const [serverFiles, setServerFiles] = useState<FileItem[]>([])
-  const [waitingFiles, setWaitingFiles] = useState<FileItem[]>([])
-  const [pendingApproval, setPendingApproval] = useState<FileItem[]>([])
-  const [isLoading, setIsLoading] = useState({ server: false, pending: false })
-  const [isUploading, setIsUploading] = useState(false)
+  const [serverFiles, setServerFiles] = useState<FileItem[]>([]);
+  const [waitingFiles, setWaitingFiles] = useState<FileItem[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<FileItem[]>([]);
+  const [isLoading, setIsLoading] = useState({ server: false, pending: false });
+  const [isUploading, setIsUploading] = useState(false);
 
   // resolve API_URL: primeiro env, depois host atual
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "")
+    (typeof window !== "undefined" ? window.location.origin : "");
 
   async function loadServerFiles() {
-    setIsLoading(prev => ({ ...prev, server: true }))
+    setIsLoading((prev) => ({ ...prev, server: true }));
     try {
-      const res = await fetch(`${API_URL}/files?type=media`)
-      const data = await res.json()
+      const res = await fetch(`${API_URL}/files?type=media`);
+      const data = await res.json();
       const items = data.media_data.map((name: string) => ({
         id: name,
         name,
         size: "-",
         status: "server" as FileStatus,
-        uploadDate: "-"
-      }))
-      setServerFiles(items)
+        uploadDate: "-",
+      }));
+      setServerFiles(items);
     } finally {
-      setIsLoading(prev => ({ ...prev, server: false }))
+      setIsLoading((prev) => ({ ...prev, server: false }));
     }
   }
 
   async function loadPending() {
-    setIsLoading(prev => ({ ...prev, pending: true }))
+    setIsLoading((prev) => ({ ...prev, pending: true }));
     try {
-      const res = await fetch(`${API_URL}/files?type=upload`)
-      const data = await res.json()
+      const res = await fetch(`${API_URL}/files?type=upload`);
+      const data = await res.json();
       const items = data.upload_files.map((name: string) => ({
         id: name,
         name,
         size: "-",
         status: "pending-approval" as FileStatus,
-        uploadDate: "-"
-      }))
-      setPendingApproval(items)
+        uploadDate: "-",
+      }));
+      setPendingApproval(items);
     } finally {
-      setIsLoading(prev => ({ ...prev, pending: false }))
+      setIsLoading((prev) => ({ ...prev, pending: false }));
     }
   }
 
   useEffect(() => {
-    loadServerFiles()
-    loadPending()
-  }, [])
+    loadServerFiles();
+    loadPending();
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files) return
+    const files = e.target.files;
+    if (!files) return;
 
     const arr = Array.from(files).map((file, idx) => ({
       id: `waiting-${Date.now()}-${idx}`,
       name: file.name,
       size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
       status: "waiting" as FileStatus,
-      fileObject: file
-    }))
-    setWaitingFiles(prev => [...prev, ...arr])
-    e.target.value = ""
-  }
+      fileObject: file,
+    }));
+    setWaitingFiles((prev) => [...prev, ...arr]);
+    e.target.value = "";
+  };
 
   const removeFromWaiting = (id: string) => {
-    setWaitingFiles(prev => prev.filter(f => f.id !== id))
-  }
+    setWaitingFiles((prev) => prev.filter((f) => f.id !== id));
+  };
 
   const sendFiles = async () => {
-    if (waitingFiles.length === 0) return
-    setIsUploading(true)
+    if (waitingFiles.length === 0) return;
+    setIsUploading(true);
     try {
       for (const item of waitingFiles) {
-        const form = new FormData()
-        form.append("file", item.fileObject as Blob)
-        await fetch(`${API_URL}/upload`, { method: "POST", body: form })
+        const form = new FormData();
+        form.append("file", item.fileObject as Blob);
+        await fetch(`${API_URL}/upload`, { method: "POST", body: form });
       }
-      await loadPending()
-      setWaitingFiles([])
+      await loadPending();
+      setWaitingFiles([]);
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
     }
-  }
+  };
 
   const processAll = async (approve: boolean) => {
     for (const file of pendingApproval) {
       await fetch(`${API_URL}/files/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, approve })
-      })
+        body: JSON.stringify({ filename: file.name, approve }),
+      });
     }
-    await Promise.all([loadPending(), loadServerFiles()])
-  }
+    await Promise.all([loadPending(), loadServerFiles()]);
+  };
 
   const getStatusBadge = (status: FileStatus) => {
     switch (status) {
       case "server":
         return (
-          <Badge variant="default" className="bg-green-100 text-green-700 text-xs">
+          <Badge
+            variant="default"
+            className="bg-green-100 text-green-700 text-xs"
+          >
             <Server className="w-3 h-3 mr-1" />
             <span className="hidden sm:inline">Servidor</span>
           </Badge>
-        )
+        );
       case "waiting":
         return (
           <Badge variant="secondary" className="text-xs">
             <Clock className="w-3 h-3 mr-1" />
             <span className="hidden sm:inline">Aguardando</span>
           </Badge>
-        )
+        );
       case "pending-approval":
         return (
-          <Badge variant="outline" className="border-orange-200 text-orange-700 text-xs">
+          <Badge
+            variant="outline"
+            className="border-orange-200 text-orange-700 text-xs"
+          >
             <Clock className="w-3 h-3 mr-1" />
             <span className="hidden sm:inline">Pendente</span>
           </Badge>
-        )
+        );
+    }
+  };
+
+  // Função para baixar logs via fetch+Blob
+  async function downloadLog(type: "supervisor" | "app" | "critical") {
+    try {
+      const res = await fetch(`${API_URL}/download-log/${type}`);
+      if (!res.ok) throw new Error("Falha ao baixar log");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${type}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert("Erro ao baixar log!");
+    }
+  }
+
+  // Função para baixar métricas via fetch+Blob
+  async function handleDownloadMetrics() {
+    try {
+      const res = await fetch(`${API_URL}/api/metrics/download`);
+      if (!res.ok) throw new Error("Falha ao baixar métricas");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "metrics_envio.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert("Erro ao baixar métricas!");
     }
   }
 
   return (
     <div className="container mx-auto p-4 space-y-6 max-w-4xl">
       <div className="text-center space-y-1">
-        <h1 className="text-2xl md:text-3xl font-bold">Gerenciamento de Arquivos</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">
+          Gerenciamento de Arquivos
+        </h1>
         <p className="text-sm text-muted-foreground">
           Gerencie uploads, aprovações e arquivos do servidor
         </p>
@@ -172,14 +233,16 @@ export default function FileManagement() {
             disabled={isLoading.server}
           >
             <RefreshCw
-              className={`w-3 h-3 mr-1 ${isLoading.server ? "animate-spin" : ""}`}
+              className={`w-3 h-3 mr-1 ${
+                isLoading.server ? "animate-spin" : ""
+              }`}
             />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {serverFiles.map(file => (
+            {serverFiles.map((file) => (
               <div
                 key={file.id}
                 className="flex items-center justify-between p-2 border rounded-lg bg-green-50/50"
@@ -193,9 +256,7 @@ export default function FileManagement() {
                     >
                       {file.name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {file.size}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{file.size}</p>
                   </div>
                 </div>
                 {getStatusBadge(file.status)}
@@ -239,7 +300,7 @@ export default function FileManagement() {
           </div>
 
           <div className="space-y-2">
-            {waitingFiles.map(file => (
+            {waitingFiles.map((file) => (
               <div
                 key={file.id}
                 className="flex items-center justify-between p-2 border rounded-lg bg-blue-50/50"
@@ -253,9 +314,7 @@ export default function FileManagement() {
                     >
                       {file.name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {file.size}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{file.size}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -291,8 +350,7 @@ export default function FileManagement() {
             ) : (
               <>
                 <Upload className="w-4 h-4 mr-2" />
-                Enviar{" "}
-                {waitingFiles.length > 0 && `(${waitingFiles.length})`}
+                Enviar {waitingFiles.length > 0 && `(${waitingFiles.length})`}
               </>
             )}
           </Button>
@@ -329,7 +387,7 @@ export default function FileManagement() {
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {pendingApproval.map(file => (
+            {pendingApproval.map((file) => (
               <div
                 key={file.id}
                 className="flex items-center justify-between p-2 border rounded-lg bg-orange-50/50"
@@ -343,9 +401,7 @@ export default function FileManagement() {
                     >
                       {file.name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {file.size}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{file.size}</p>
                   </div>
                 </div>
                 {getStatusBadge(file.status)}
@@ -382,6 +438,35 @@ export default function FileManagement() {
           )}
         </CardContent>
       </Card>
+
+      {/* Logs do Sistema */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Logs do Sistema</CardTitle>
+          <CardDescription>
+            Baixe os logs individuais do sistema para análise ou suporte.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <Button variant="outline" onClick={() => downloadLog("supervisor")}>
+              Baixar Supervisor
+            </Button>
+            <Button variant="outline" onClick={() => downloadLog("app")}>
+              Baixar Aplicação
+            </Button>
+            <Button variant="outline" onClick={() => downloadLog("critical")}>
+              Baixar Erros Críticos
+            </Button>
+            <Button variant="outline" onClick={handleDownloadMetrics}>
+              Baixar Métricas
+            </Button>
+          </div>
+          <LogTerminal />
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-2 mt-2"></div>
     </div>
-  )
+  );
 }

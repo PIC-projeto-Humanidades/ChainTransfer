@@ -1,7 +1,7 @@
 # controllers/file_controller.py
 
 import os
-from flask import Blueprint, request, Response, abort
+from flask import Blueprint, request, Response, abort, jsonify
 from pathlib import Path
 import mimetypes
 
@@ -53,3 +53,8 @@ def download_file(filename):
         headers["Content-Range"] = f"bytes {byte1}-{byte2}/{file_size}"
 
     return Response(generate(), status_code, headers)
+
+@file_bp.route("/file/<path:filename>/trace", methods=["GET"])
+def file_trace(filename):
+    trace = get_trace(filename)
+    return jsonify(trace)

@@ -5,6 +5,8 @@ import shutil
 from logs.log_f import log_f as logger  
 import hashlib    
 from services.network_service import meu_ip
+from services.metrics_service import log_envio
+from time import time
 
 files_bp = Blueprint("files", __name__)
 
@@ -86,22 +88,27 @@ def approve_file():
     if approve:
         stem   = src.stem
         suffix = src.suffix
-
-        # 1) obtém o IP do servidor
         ip_servidor = meu_ip()
-
-        # 2) gera hash SHA‑256 do stem + IP
         to_hash = f"{stem}-{ip_servidor}".encode('utf-8')
         full_hash = hashlib.sha256(to_hash).hexdigest()
-
-        # 3) usa apenas os primeiros 8 caracteres (ajuste se quiser mais/menos)
         short_hash = full_hash[:8]
-
         new_name = f"{stem}-{short_hash}{suffix}"
         dest     = MEDIA_PATH / new_name
-
+        t_inicio = time()
         try:
             shutil.move(str(src), str(dest))
+            t_fim = time()
+            # Registra métrica de envio
+            log_envio(
+                arquivo=new_name,
+                tamanho_bytes=dest.stat().st_size if dest.exists() else 0,
+                destino=ip_servidor,
+                tentativa=1,
+                resultado="sucesso",
+                motivo_falha="",
+                timestamp_inicio=str(t_inicio),
+                timestamp_fim=str(t_fim)
+            )
             logger(f"✅ Arquivo aprovado e movido: {filename} → {new_name}")
             return jsonify({
                 "original": filename,
@@ -109,6 +116,17 @@ def approve_file():
                 "status": "moved to media_data"
             }), 200
         except Exception as e:
+            t_fim = time()
+            log_envio(
+                arquivo=new_name,
+                tamanho_bytes=0,
+                destino=ip_servidor,
+                tentativa=1,
+                resultado="falha",
+                motivo_falha=str(e),
+                timestamp_inicio=str(t_inicio),
+                timestamp_fim=str(t_fim)
+            )
             logger(f"❌ Erro ao mover {filename}: {e}")
             return jsonify({"error": f"Falha ao mover arquivo: {e}"}), 500
 
